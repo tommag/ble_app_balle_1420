@@ -47,6 +47,7 @@
 #include "pstorage.h"
 #include "ble_ball_lighting_service.h"
 #include "ble_bas.h" //Battery service
+#include "nrf_pwm.h"
 
 #define DEVICE_NAME                     "Balle 14:20 v1"                           /**< Name of device. Will be included in the advertising data. */
 
@@ -156,10 +157,25 @@ static void pins_init(void)
 {
 	//Init LED outputs
 	nrf_gpio_cfg_output(IRLED_PIN); //simple output
-	nrf_gpio_cfg_output(WLED_PIN); //simple output
 	
 	//TODO
 }
+
+/**@brief Function for the PWM initialization.
+ *
+ * @details Initializes the PWM module needed to set the white LEDs intensity
+ */
+static void pwm_init(void)
+{
+	nrf_pwm_config_t pwm_config = PWM_DEFAULT_CONFIG;
+	
+	pwm_config.mode = PWM_MODE_LED_255;
+	pwm_config.num_channels = 1;
+	pwm_config.gpio_num[0] = WLED_PIN;
+	
+	nrf_pwm_init(&pwm_config);
+}
+
 
 
 /**@brief Function for the Timer initialization.
@@ -244,10 +260,9 @@ static void advertising_init(void)
 
 /**@brief Function for handling new values received by BLE for the white LEDs intensity
  */
-static void wled_handler(ble_bls_t *p_bls, uint8_t new_state)
+static void wled_handler(ble_bls_t *p_bls, uint8_t new_value)
 {
-	nrf_gpio_pin_write(WLED_PIN, new_state);
-	//TODO PWM
+	nrf_pwm_set_value(0, new_value); // channel 0 for the PWM module
 }
 
 /**@brief Function for handling new values received by BLE for the IR LEDs state
@@ -605,6 +620,7 @@ int main(void)
 {
     // Initialize
     pins_init();
+	pwm_init();
     timers_init();
     gpiote_init();
     ble_stack_init();
