@@ -4,6 +4,7 @@
 #include "nrf_gpio.h"
 #if(USE_WITH_SOFTDEVICE == 1)
 #include "nrf_sdm.h"
+#include "app_error.h"
 #endif
 
 static uint32_t pwm_max_value, pwm_next_value[PWM_MAX_CHANNELS], pwm_next_max_value, pwm_io_ch[PWM_MAX_CHANNELS], pwm_running[PWM_MAX_CHANNELS];
@@ -19,7 +20,10 @@ void ppi_enable_channel(uint32_t ch_num, volatile uint32_t *event_ptr, volatile 
     else
     {
 #if(USE_WITH_SOFTDEVICE == 1)
-        sd_ppi_channel_assign(ch_num, event_ptr, task_ptr);
+		uint32_t err_code;
+		
+        err_code=sd_ppi_channel_assign(ch_num, event_ptr, task_ptr);
+		APP_ERROR_CHECK(err_code);
         sd_ppi_channel_enable_set(1 << ch_num);
 #else
         // Otherwise we configure the channel and return the channel number
@@ -84,8 +88,11 @@ uint32_t nrf_pwm_init(nrf_pwm_config_t *config)
         ppi_enable_channel(config->ppi_channel[i*2+1],&PWM_TIMER->EVENTS_COMPARE[3], &NRF_GPIOTE->TASKS_OUT[pwm_gpiote_channel[i]]);        
     }
 #if(USE_WITH_SOFTDEVICE == 1)
-    sd_nvic_SetPriority(PWM_IRQn, PWM_IRQ_PRIORITY | 0x01);
-    sd_nvic_EnableIRQ(PWM_IRQn);
+	uint32_t err_code;
+    err_code = sd_nvic_SetPriority(PWM_IRQn, PWM_IRQ_PRIORITY | 0x01);
+	APP_ERROR_CHECK(err_code);
+    err_code = sd_nvic_EnableIRQ(PWM_IRQn);
+	APP_ERROR_CHECK(err_code);
 #else
     NVIC_SetPriority(PWM_IRQn, PWM_IRQ_PRIORITY);
     NVIC_EnableIRQ(PWM_IRQn);

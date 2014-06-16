@@ -359,9 +359,9 @@
             <useXO>0</useXO>
             <VariousControls>
               <MiscControls>--c99</MiscControls>
-              <Define>NRF51 DEBUG_NRF_USER BLE_STACK_SUPPORT_REQD BOARD_1420_BALLE_V1</Define>
+              <Define>NRF51 DEBUG_NRF_USER BLE_STACK_SUPPORT_REQD BOARD_1420_BALLE_V1 ENABLE_DEBUG_LOG_SUPPORT</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..\..\..\..\..\Include;..\..\..\..\..\Include\app_common;..\..\..\..\..\Include\ble;..\..\..\..\..\Include\ble\ble_services;..\..\..\..\..\Include\s110;..\..\..\..\..\Include\sd_common</IncludePath>
+              <IncludePath>..;..\..\..\..\..\Include;..\..\..\..\..\Include\app_common;..\..\..\..\..\Include\ble;..\..\..\..\..\Include\ble\ble_services;..\..\..\..\..\Include\s110;..\..\..\..\..\Include\sd_common;..\..\..\..\..\Include\sdk</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -503,6 +503,21 @@
               <FileName>ble_debug_assert_handler.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\ble\ble_debug_assert_handler.c</FilePath>
+            </File>
+            <File>
+              <FileName>nrf_pwm.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\nrf_pwm.c</FilePath>
+            </File>
+            <File>
+              <FileName>debug.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\debug.c</FilePath>
+            </File>
+            <File>
+              <FileName>simple_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\Source\simple_uart\simple_uart.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1005,6 +1020,21 @@
               <FileName>ble_debug_assert_handler.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\ble\ble_debug_assert_handler.c</FilePath>
+            </File>
+            <File>
+              <FileName>nrf_pwm.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\nrf_pwm.c</FilePath>
+            </File>
+            <File>
+              <FileName>debug.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\debug.c</FilePath>
+            </File>
+            <File>
+              <FileName>simple_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\Source\simple_uart\simple_uart.c</FilePath>
             </File>
           </Files>
         </Group>

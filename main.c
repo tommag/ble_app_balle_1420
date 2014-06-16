@@ -48,6 +48,8 @@
 #include "ble_ball_lighting_service.h"
 #include "ble_bas.h" //Battery service
 #include "nrf_pwm.h"
+#include "debug.h"
+#include "nrf_delay.h"
 
 #define DEVICE_NAME                     "Balle 14:20 v1"                           /**< Name of device. Will be included in the advertising data. */
 
@@ -111,11 +113,14 @@ void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p
     //                The flash write will happen EVEN if the radio is active, thus interrupting
     //                any communication.
     //                Use with care. Un-comment the line below to use.
-    ble_debug_assert_handler(error_code, line_num, p_file_name);
-	//TODO output error code on tty
+    //ble_debug_assert_handler(error_code, line_num, p_file_name);
+	
+	debug_log("[APPL]: ASSERT: %s, %d, error 0x%08x\r\n", p_file_name, line_num, error_code);
+	
+	nrf_delay_ms(2000);
 
     // On assert, the system can only recover with a reset.
-    //NVIC_SystemReset();
+    NVIC_SystemReset();
 }
 
 
@@ -158,7 +163,7 @@ static void pins_init(void)
 	//Init LED outputs
 	nrf_gpio_cfg_output(IRLED_PIN); //simple output
 	
-	//TODO
+	//TODO other pins
 }
 
 /**@brief Function for the PWM initialization.
@@ -174,9 +179,8 @@ static void pwm_init(void)
 	pwm_config.gpio_num[0] = WLED_PIN;
 	
 	nrf_pwm_init(&pwm_config);
+	
 }
-
-
 
 /**@brief Function for the Timer initialization.
  *
@@ -620,16 +624,19 @@ int main(void)
 {
     // Initialize
     pins_init();
-	pwm_init();
+	debug_init();
     timers_init();
-    gpiote_init();
+    gpiote_init();	
     ble_stack_init();
+	pwm_init(); //must be started AFTER soft device init !
     scheduler_init();    
     gap_params_init();
     advertising_init();
     services_init();
     conn_params_init();
     sec_params_init();
+	
+	debug_log("Init end \r\n");
 
     // Start execution
     timers_start();
