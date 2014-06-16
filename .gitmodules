@@ -1,0 +1,3 @@
+[submodule "mma8652"]
+	path = mma8652
+	url = https://github.com/tommag/mma8652.git
