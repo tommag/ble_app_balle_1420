@@ -519,6 +519,11 @@
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\simple_uart\simple_uart.c</FilePath>
             </File>
+            <File>
+              <FileName>nrf_delay.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\Source\nrf_delay\nrf_delay.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>
@@ -1035,6 +1040,11 @@
               <FileName>simple_uart.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\simple_uart\simple_uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>nrf_delay.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\Source\nrf_delay\nrf_delay.c</FilePath>
             </File>
           </Files>
         </Group>

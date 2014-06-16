@@ -12,7 +12,7 @@
 #define SCL_PIN				14						//I2C SCL pin
 #define SDA_PIN				15						//I2C SDA pin
 
-#define CHRG_STAT_PIN		13						//Battery charger IC status pin
+#define CHRG_STAT_PIN		13						//Battery charger IC status pin -- LOW means charging, 
 
 #define WLED_PIN			16						//White LEDS PWM control pin
 

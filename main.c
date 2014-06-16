@@ -70,8 +70,7 @@
 #define MAX_CONN_PARAMS_UPDATE_COUNT    3                                           /**< Number of attempts before giving up the connection parameter negotiation. */
 
 #define APP_GPIOTE_MAX_USERS            1                                           /**< Maximum number of users of the GPIOTE handler. */
-
-#define BUTTON_DETECTION_DELAY          APP_TIMER_TICKS(50, APP_TIMER_PRESCALER)    /**< Delay from a GPIOTE event until a button is reported as pushed (in number of timer ticks). */
+static app_gpiote_user_id_t 			m_gpiote_user_id;							//GPIOTE library user identifier
 
 #define SEC_PARAM_TIMEOUT               30                                          /**< Timeout for Pairing Request or Security Request (in seconds). */
 #define SEC_PARAM_BOND                  0                                           /**< Don't perform bonding. */
@@ -265,8 +264,35 @@ static void on_app_event(app_state_events_t event)
 		case ON_LOW_BATT: on_low_batt(); break;
 		default: break;
 	}
+	
+	debug_log("[APPL]: Event 0x%02x occurred, new state : 0x%02x", event, m_current_state);
 }
 
+/**@brief Function called when an interrupt is sent by the accelerometer via the Scheduler
+ * 
+ * @details Assert the interrupt then call the related application event
+ * 
+ * @param[in] int_num  Interrupt line asserted (1 or 2)
+ */
+static void on_accelerometer_interrupt(void * p_event_data, uint16_t event_size)
+{
+	//TODO assert interrupt
+	on_app_event(ON_ACCELEROMETER_EVENT);
+}
+
+/**@brief Function called when the battery charge stops, either because it is complete or the charger is disconnected
+ */
+static void on_battery_charge_stop(void * p_event_data, uint16_t event_size)
+{
+	//Do nothing
+}
+
+/**@brief Function called when the battery charge starts
+ */
+static void on_battery_charge_start(void * p_event_data, uint16_t event_size)
+{
+	//Do nothing
+}
 
 /**@brief Function for error handling, which is called when an error has occurred.
  *
@@ -326,6 +352,33 @@ static void service_error_handler(uint32_t nrf_error)
     APP_ERROR_HANDLER(nrf_error);
 }
 
+/**@brief Function for GPIOTE events handling, called when a GPIO interrupt occurs
+ * GPIOTE pins and transitions from which events occur are defined in gpiote_init() function
+ */
+void gpiote_event_handler(uint32_t event_pins_lo_to_hi, uint32_t event_pins_hi_to_lo)
+{
+	//if ACC_INT1 or ACC_INT2 transitioned from low to high, call the accelerometer handler
+	uint32_t int_num = 0;
+	if(event_pins_lo_to_hi & (1UL << ACC_INT1_PIN))
+	{
+		int_num = 1; 
+		app_sched_event_put(&int_num, sizeof(int_num), on_accelerometer_interrupt);
+	}
+	
+	if(event_pins_lo_to_hi & (1UL << ACC_INT2_PIN))
+	{
+		int_num = 2; 
+		app_sched_event_put(&int_num, sizeof(int_num), on_accelerometer_interrupt);
+	}
+	
+	//if charger status line transitioned from low to high call the "charger disconnected" handler
+	if(event_pins_lo_to_hi & (1UL << CHRG_STAT_PIN))
+		app_sched_event_put(NULL, 0, on_battery_charge_stop);
+	
+	//else call the "charger connected" handler
+	if(event_pins_hi_to_lo & (1UL << CHRG_STAT_PIN))
+		app_sched_event_put(NULL, 0, on_battery_charge_start);
+}
 
 /**@brief Function for the pins initialization.
  *
@@ -333,10 +386,16 @@ static void service_error_handler(uint32_t nrf_error)
  */
 static void pins_init(void)
 {
-	//Init LED outputs
+	//Init LED output
 	nrf_gpio_cfg_output(IRLED_PIN); //simple output
 	
-	//TODO other pins
+	//Init accelerometer interrupt inputs with pull down resistor
+	//The GPIOTE handling library takes care of defining the SENSE fields
+	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_PULLDOWN, NRF_GPIO_PIN_NOSENSE);
+	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_PULLDOWN, NRF_GPIO_PIN_NOSENSE);
+	
+	//Init battery charger status input with pull up resistor
+	nrf_gpio_cfg_sense_input(CHRG_STAT_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_NOSENSE);
 }
 
 /**@brief Function for the PWM initialization.
@@ -727,59 +786,32 @@ static void scheduler_init(void)
     APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
 }
 
-/**@brief Function for handling a button event.
- *
- * @param[in]   pin_no         Pin that had an event happen.
- * @param[in]   button_event   APP_BUTTON_PUSH or APP_BUTTON_RELEASE.
- */
-/* YOUR_JOB: Uncomment this function if you need to handle button events.
-static void button_event_handler(uint8_t pin_no, uint8_t button_event)
-{
-    if (button_action == APP_BUTTON_PUSH)
-    {
-        switch (pin_no)
-        {
-            case MY_BUTTON_PIN:
-                // Code to handle MY_BUTTON keypresses
-                break;
-
-            // Handle any other buttons
-
-            default:
-                APP_ERROR_HANDLER(pin_no);
-                break;
-        }
-    }
-}
-*/
 
 /**@brief Function for initializing the GPIOTE handler module.
+ * This function takes care of setting up the GPIO interrupts
  */
 static void gpiote_init(void)
 {
     APP_GPIOTE_INIT(APP_GPIOTE_MAX_USERS);
+	
+	//Setup pins and transitions to interrupt from
+	uint32_t err_code;
+	uint32_t lo_to_hi_bitmask = (1UL << ACC_INT1_PIN)
+								& (1UL << ACC_INT2_PIN)
+								& (1UL << CHRG_STAT_PIN); //pins to be notified of transition low -> high
+	uint32_t hi_to_lo_bitmask = (1UL << CHRG_STAT_PIN); //pins to be notified of transition high -> low
+	
+	err_code = app_gpiote_user_register(&m_gpiote_user_id,
+								lo_to_hi_bitmask,
+								hi_to_lo_bitmask,
+								gpiote_event_handler);
+	
+	APP_ERROR_CHECK(err_code);
+	
+	//Enable GPIOTE module
+	err_code = app_gpiote_user_enable(m_gpiote_user_id);
+	APP_ERROR_CHECK(err_code);
 }
-
-
-/**@brief Function for initializing the button handler module.
- */
-/*static void buttons_init(void)
-{*/
-    // Note: Array must be static because a pointer to it will be saved in the Button handler
-    //       module.
-/*    static app_button_cfg_t buttons[] =
-    {
-        {WAKEUP_BUTTON_PIN, APP_BUTTON_ACTIVE_LOW, BUTTON_PULL, NULL},
-        // YOUR_JOB: Add other buttons to be used:
-        // {MY_BUTTON_PIN,     false, BUTTON_PULL, button_event_handler}
-    };
-
-    APP_BUTTON_INIT(buttons, sizeof(buttons) / sizeof(buttons[0]), BUTTON_DETECTION_DELAY, true);
-
-    // Note: If the only use of buttons is to wake up, the app_button module can be omitted, and
-    //       the wakeup button can be configured by
-    // GPIO_WAKEUP_BUTTON_CONFIG(WAKEUP_BUTTON_PIN);*/
-//}
 
 
 /**@brief Function for the Power manager.
@@ -797,6 +829,7 @@ int main(void)
 {
     // Initialize
     pins_init();
+	//TODO adc_init();
 	debug_init();
     timers_init();
     gpiote_init();	

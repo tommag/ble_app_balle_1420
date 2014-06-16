@@ -12,7 +12,7 @@ I (..\..\..\..\..\Include\system_nrf51.h)(0x5321B20E)
 I (..\..\..\..\..\Include\nrf51_bitfields.h)(0x5321B20E)
 I (..\..\..\..\..\Include\nrf51_deprecated.h)(0x5321B20E)
 I (..\..\..\..\..\Include\compiler_abstraction.h)(0x5321B20E)
-F (.\..\main.c)(0x539EF0AB)(-c --cpu Cortex-M0 -D__EVAL --li -g -O0 --apcs=interwork --enum_is_int -I.. -I..\..\..\..\..\Include -I..\..\..\..\..\Include\app_common -I..\..\..\..\..\Include\ble -I..\..\..\..\..\Include\ble\ble_services -I..\..\..\..\..\Include\s110 -I..\..\..\..\..\Include\sd_common -I..\..\..\..\..\Include\sdk --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\PACK\ARM\CMSIS\3.20.4\CMSIS\Include-I C:\Keil\ARM\Device\Nordic\nRF51822\Include-DNRF51 -DNRF51 -DDEBUG_NRF_USER -DBLE_STACK_SUPPORT_REQD -DBOARD_1420_BALLE_V1 -DENABLE_DEBUG_LOG_SUPPORT -o .\_build\main.o --omf_browse .\_build\main.crf --depend .\_build\main.d)
+F (.\..\main.c)(0x539F08E1)(-c --cpu Cortex-M0 -D__EVAL --li -g -O0 --apcs=interwork --enum_is_int -I.. -I..\..\..\..\..\Include -I..\..\..\..\..\Include\app_common -I..\..\..\..\..\Include\ble -I..\..\..\..\..\Include\ble\ble_services -I..\..\..\..\..\Include\s110 -I..\..\..\..\..\Include\sd_common -I..\..\..\..\..\Include\sdk --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\PACK\ARM\CMSIS\3.20.4\CMSIS\Include-I C:\Keil\ARM\Device\Nordic\nRF51822\Include-DNRF51 -DNRF51 -DDEBUG_NRF_USER -DBLE_STACK_SUPPORT_REQD -DBOARD_1420_BALLE_V1 -DENABLE_DEBUG_LOG_SUPPORT -o .\_build\main.o --omf_browse .\_build\main.crf --depend .\_build\main.d)
 I (C:\Keil\ARM\ARMCC\include\stdint.h)(0x52FE34EE)
 I (C:\Keil\ARM\ARMCC\include\string.h)(0x52FE34EE)
 I (..\..\..\..\..\Include\nordic_common.h)(0x5321B106)
@@ -44,7 +44,7 @@ I (..\..\..\..\..\Include\ble\ble_services\ble_srv_common.h)(0x5321B102)
 I (..\..\..\..\..\Include\app_common\app_util.h)(0x5321B100)
 I (..\..\..\..\..\Include\ble\ble_advdata.h)(0x5321B102)
 I (..\..\..\..\..\Include\ble\ble_conn_params.h)(0x5321B102)
-I (..\board_balle_1420_v1.h)(0x539EA871)
+I (..\board_balle_1420_v1.h)(0x539F03ED)
 I (..\..\..\..\..\Include\app_common\app_scheduler.h)(0x5321B100)
 I (..\..\..\..\..\Include\sd_common\softdevice_handler.h)(0x5321B106)
 I (C:\Keil\ARM\ARMCC\include\stdlib.h)(0x52FE34EE)
@@ -419,7 +419,7 @@ I (..\..\..\..\..\Include\nrf.h)(0x5321B20E)
 I (..\..\..\..\..\Include\nrf51_bitfields.h)(0x5321B20E)
 I (..\..\..\..\..\Include\nrf51_deprecated.h)(0x5321B20E)
 I (..\..\..\..\..\Include\nordic_common.h)(0x5321B106)
-I (..\board_balle_1420_v1.h)(0x539EA871)
+I (..\board_balle_1420_v1.h)(0x539F03ED)
 I (..\..\..\..\..\Include\sdk\debug.h)(0x5321B100)
 F (..\..\..\..\..\Source\simple_uart\simple_uart.c)(0x53721B5C)(-c --cpu Cortex-M0 -D__EVAL --li -g -O0 --apcs=interwork --enum_is_int -I.. -I..\..\..\..\..\Include -I..\..\..\..\..\Include\app_common -I..\..\..\..\..\Include\ble -I..\..\..\..\..\Include\ble\ble_services -I..\..\..\..\..\Include\s110 -I..\..\..\..\..\Include\sd_common -I..\..\..\..\..\Include\sdk --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\PACK\ARM\CMSIS\3.20.4\CMSIS\Include-I C:\Keil\ARM\Device\Nordic\nRF51822\Include-DNRF51 -DNRF51 -DDEBUG_NRF_USER -DBLE_STACK_SUPPORT_REQD -DBOARD_1420_BALLE_V1 -DENABLE_DEBUG_LOG_SUPPORT -o .\_build\simple_uart.o --omf_browse .\_build\simple_uart.crf --depend .\_build\simple_uart.d)
 I (C:\Keil\ARM\ARMCC\include\stdint.h)(0x52FE34EE)
