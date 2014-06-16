@@ -95,6 +95,179 @@ static ble_bls_t												m_bls;																			//Ball lighting service dat
 // Persistent storage system event handler
 void pstorage_sys_event_handler (uint32_t p_evt);
 
+
+//States for the state machine
+typedef enum
+{
+	STATE_INIT,				//init state
+	STATE_STANDBY,			//stand-by state : low power mode, radio turned off ; waiting for an accelerometer event
+	STATE_FIRST_CONN_ATT,	//First connection attempt : advertising with user feedback (Led)
+	STATE_NEW_CONN_ATT,		//New connection attempt : trying to establish a new connection after a connection timeout ; advertising without user feedback
+	STATE_ACTIVE,			//Active state : connection established, waiting for commands via BLE
+} app_states_t;
+
+//State transition events for the state machine
+typedef enum
+{
+	ON_ACCELEROMETER_EVENT,	//Event: accelerometer reporting a motion event
+	ON_ADVERTISING_TIMEOUT,	//Event: advertisting timed out
+	ON_CONNECTION_TIMEOUT,	//Event: connection with the Master device timed out
+	ON_ACTIVITY_TIMEOUT,	//Event: device in stand-by state for too long
+	ON_DISCONNECT_RQ,		//Event: disconnect request sent by the Master device
+	ON_CONNECTION_SUCCESS,	//Event: connection success
+	ON_LOW_BATT,			//Event: low battery
+} app_state_events_t;
+
+static volatile app_states_t m_current_state = STATE_INIT;
+
+/* Actions to do when entering the STANDBY state :
+ * Start a timer to detect the activity timeout
+ * Perform energy saving optimizations
+ * Setup accelerometer to detect motion events
+ */
+static void action_enter_standby(void)
+{
+	m_current_state = STATE_STANDBY;
+	//TODO
+}
+
+/* Actions to do when entering the power down state (after a low battery event or activity timeout)
+ * Turn down all peripherals
+ * Setup wakeup source
+ * Enter power-down
+ * 
+ * When woken up from power down, the CPU will reset
+ */
+static void action_enter_power_down(void)
+{
+	//TODO
+}
+
+/* Actions to do when entering the ACTIVE state 
+ */
+static void action_enter_active(void)
+{
+	m_current_state = STATE_ACTIVE;
+}
+
+/* Handling of the ON_ACCELEROMETER_EVENT event */
+static void on_accelerometer_event(void)
+{
+	switch(m_current_state)
+	{
+		case STATE_STANDBY:
+			m_current_state = STATE_FIRST_CONN_ATT;
+			//TODO start user feedback
+			//TODO start advertising
+			break;
+		default:
+			break;
+	}
+}
+
+/* Handling of the ON_ADVERTISING_TIMEOUT event */
+static void on_advertising_timeout(void)
+{
+	switch(m_current_state)
+	{
+		case STATE_FIRST_CONN_ATT:
+			//TODO user feedback
+			action_enter_standby();
+			break;
+		case STATE_NEW_CONN_ATT:
+			action_enter_standby();
+			break;
+		default:
+			break;
+	}
+}
+
+/* Handling of the ON_CONNECTION_TIMEOUT event */
+static void on_connection_timeout(void)
+{
+	switch(m_current_state)
+	{
+		case STATE_ACTIVE:
+			m_current_state = STATE_NEW_CONN_ATT; //Try to establish a new connection immediately
+			//TODO start advertising
+			break;
+		default:
+			break;
+	}
+}
+
+/* Handling of the ON_ACTIVITY_TIMEOUT event */
+static void on_activity_timeout(void)
+{
+	switch(m_current_state)
+	{
+		case STATE_STANDBY:
+			action_enter_power_down();
+			break;
+		default:
+			break;
+	}	
+}
+
+/* Handling of the ON_DISCONNECT_RQ event */
+static void on_disconnect_rq(void)
+{
+	switch(m_current_state)
+	{
+		case STATE_ACTIVE:
+			//TODO user feedback
+			action_enter_standby();
+			break;
+		default:
+			break;
+	}
+}
+
+/* Handling of the ON_CONNECTION_SUCCESS event */
+static void on_connection_success(void)
+{
+	switch(m_current_state)
+	{
+		case STATE_FIRST_CONN_ATT:
+			//TODO user feedback
+			action_enter_active();
+			break;
+		case STATE_NEW_CONN_ATT:
+			action_enter_active();
+			break;
+		default:
+			break;
+	}
+}
+
+/* Handling of the ON_LOW_BATT event */
+static void on_low_batt(void)
+{
+	switch(m_current_state)
+	{
+		default:
+			action_enter_power_down();
+			break;
+	}
+}
+
+/* State machine main event handler */
+static void on_app_event(app_state_events_t event)
+{
+	switch(event)
+	{
+		case ON_ACCELEROMETER_EVENT: on_accelerometer_event(); break;
+		case ON_ADVERTISING_TIMEOUT: on_advertising_timeout(); break;
+		case ON_CONNECTION_TIMEOUT: on_connection_timeout(); break;
+		case ON_ACTIVITY_TIMEOUT: on_activity_timeout(); break;
+		case ON_DISCONNECT_RQ: on_disconnect_rq(); break;
+		case ON_CONNECTION_SUCCESS: on_connection_success(); break;
+		case ON_LOW_BATT: on_low_batt(); break;
+		default: break;
+	}
+}
+
+
 /**@brief Function for error handling, which is called when an error has occurred.
  *
  * @warning This handler is an example only and does not fit a final product. You need to analyze
@@ -637,6 +810,8 @@ int main(void)
     sec_params_init();
 	
 	debug_log("Init end \r\n");
+	//TODO boot feedback
+	m_current_state = STATE_STANDBY;
 
     // Start execution
     timers_start();
