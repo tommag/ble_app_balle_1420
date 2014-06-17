@@ -284,7 +284,6 @@ static void on_app_event(app_state_events_t event)
  */
 static void on_accelerometer_interrupt(void * p_event_data, uint16_t event_size)
 {
-	//TODO assert interrupt
 	on_app_event(ON_ACCELEROMETER_EVENT);
 }
 
