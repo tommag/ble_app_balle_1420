@@ -4,6 +4,8 @@
  * 06/2014
  */
  
+#ifndef BOARD_BALLE_1420_V1_H
+#define BOARD_BALLE_1420_V1_H
 
 //Pin definitions
 /*#define ACC_INT1_PIN		17						//Accelerometer interrupt line 1
@@ -72,3 +74,6 @@ x
 15
 GND
 */
+
+#endif  //BOARD_BALLE_1420_V1_H
+

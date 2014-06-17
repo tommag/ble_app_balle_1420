@@ -524,6 +524,21 @@
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\nrf_delay\nrf_delay.c</FilePath>
             </File>
+            <File>
+              <FileName>mma8652.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\mma8652\mma8652.c</FilePath>
+            </File>
+            <File>
+              <FileName>mma8652_i2c_wrapper_nrf51822.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\mma8652\mma8652_i2c_wrapper_nrf51822.c</FilePath>
+            </File>
+            <File>
+              <FileName>twi_hw_master.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\Source\twi_master\twi_hw_master.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>
@@ -1045,6 +1060,21 @@
               <FileName>nrf_delay.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\nrf_delay\nrf_delay.c</FilePath>
+            </File>
+            <File>
+              <FileName>mma8652.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\mma8652\mma8652.c</FilePath>
+            </File>
+            <File>
+              <FileName>mma8652_i2c_wrapper_nrf51822.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\mma8652\mma8652_i2c_wrapper_nrf51822.c</FilePath>
+            </File>
+            <File>
+              <FileName>twi_hw_master.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\Source\twi_master\twi_hw_master.c</FilePath>
             </File>
           </Files>
         </Group>

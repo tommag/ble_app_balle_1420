@@ -50,6 +50,7 @@
 #include "nrf_pwm.h"
 #include "debug.h"
 #include "nrf_delay.h"
+#include "mma8652/mma8652.h"
 
 #define DEVICE_NAME                     "Balle 14:20 v1"                           /**< Name of device. Will be included in the advertising data. */
 
@@ -94,6 +95,13 @@ static ble_bls_t												m_bls;																			//Ball lighting service dat
 // Persistent storage system event handler
 void pstorage_sys_event_handler (uint32_t p_evt);
 
+//Accelerometer parameters
+#define ACCEL_SLEEP_DATARATE			(MMA8652_CTRL_REG1_ASLP_RATE_6_25_HZ) //6.25Hz sample frequency when in SLEEP mode
+#define ACCEL_WAKE_DATARATE				(MMA8652_CTRL_REG1_DATARATE_6_25_HZ)	//6.25Hz sample frequency when in WAKE mode
+#define ACCEL_SLEEP_POWER_MODE			(MMA8652_CTRL_REG2_SMODS_LP)	//Low power mode when in SLEEP mode
+#define ACCEL_WAKE_POWER_MODE			(MMA8652_CTRL_REG2_MODS_LP)	//Low power mode when in WAKE mode
+#define	ACCEL_MOTION_THRESHOLD			(16)	//Unit : 0.063 g/LSB, 0 -> 127 counts
+#define ACCEL_MOTION_DELAY				(2)	//see Table 57. in LP mode, 6.25Hz : time step = 160ms. Max value: 255
 
 //States for the state machine
 typedef enum
@@ -357,15 +365,15 @@ static void service_error_handler(uint32_t nrf_error)
  */
 void gpiote_event_handler(uint32_t event_pins_lo_to_hi, uint32_t event_pins_hi_to_lo)
 {
-	//if ACC_INT1 or ACC_INT2 transitioned from low to high, call the accelerometer handler
+	//if ACC_INT1 or ACC_INT2 transitioned from high to low, call the accelerometer handler
 	uint32_t int_num = 0;
-	if(event_pins_lo_to_hi & (1UL << ACC_INT1_PIN))
+	if(event_pins_hi_to_lo & (1UL << ACC_INT1_PIN))
 	{
 		int_num = 1; 
 		app_sched_event_put(&int_num, sizeof(int_num), on_accelerometer_interrupt);
 	}
 	
-	if(event_pins_lo_to_hi & (1UL << ACC_INT2_PIN))
+	if(event_pins_hi_to_lo & (1UL << ACC_INT2_PIN))
 	{
 		int_num = 2; 
 		app_sched_event_put(&int_num, sizeof(int_num), on_accelerometer_interrupt);
@@ -389,10 +397,10 @@ static void pins_init(void)
 	//Init LED output
 	nrf_gpio_cfg_output(IRLED_PIN); //simple output
 	
-	//Init accelerometer interrupt inputs with pull down resistor
+	//Init accelerometer interrupt inputs with no pull resistor
 	//The GPIOTE handling library takes care of defining the SENSE fields
-	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_PULLDOWN, NRF_GPIO_PIN_NOSENSE);
-	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_PULLDOWN, NRF_GPIO_PIN_NOSENSE);
+	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
+	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
 	
 	//Init battery charger status input with pull up resistor
 	nrf_gpio_cfg_sense_input(CHRG_STAT_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_NOSENSE);
@@ -412,6 +420,76 @@ static void pwm_init(void)
 	
 	nrf_pwm_init(&pwm_config);
 	
+}
+
+/**@brief Function for the MMA8652 accelerometer initialization
+ */
+static void accelerometer_init(void)
+{
+	bool success; 
+	//I2C init
+	success = mma8652_init();
+	APP_ERROR_CHECK_BOOL(success);
+	
+	/*Only the motion detection functionnality is used so there is no need to change most of the default settings */
+	
+	//Setup data rates
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG1, 0x00
+		| ACCEL_SLEEP_DATARATE		//SLEEP mode sample frequency 
+		| ACCEL_WAKE_DATARATE);	//WAKE mode sample frequency
+	APP_ERROR_CHECK_BOOL(success);
+	
+	//Setup auto-sleep and power schemes selection
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG2, 0x00
+		| ACCEL_WAKE_POWER_MODE		//WAKE power mode
+		| ACCEL_SLEEP_POWER_MODE	//SLEEP power mode
+		| MMA8652_CTRL_REG2_SLPE); //Auto-SLEEP enable (not very useful if both datarates and power modes are the same in SLEEP and WAKE modes)
+	APP_ERROR_CHECK_BOOL(success);
+
+	//Setup wake up interrupts
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG3, 0x00
+		& ~MMA8652_CTRL_REG3_PP_OD	//Push pull interrupt outputs
+		& ~MMA8652_CTRL_REG3_IPOL	//Active low interrupt outputs
+		| MMA8652_CTRL_REG3_WAKE_FF_MT);	//Wake up from Freefall/motion detection
+	APP_ERROR_CHECK_BOOL(success);
+	
+	//Setup external interrupts
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG4, 0x00
+		| MMA8652_CTRL_REG4_INT_EN_FF_MT); //Enable interrupt from freefall/motion detection
+	APP_ERROR_CHECK_BOOL(success);
+	
+	//Setup interrupt routing (to interrupt line 1 or 2)
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG5, 0x00
+		| MMA8652_CTRL_REG5_INT_CFG_FF_MT); //Route FF/MT int to INT1
+	APP_ERROR_CHECK_BOOL(success);
+	
+	//Setup auto-sleep inactivity timeout
+	success = mma8652_i2c_register_write(MMA8652_REG_ASLP_COUNT,
+		0xFF); //Setup maximum time since auto-sleep is not really used. 
+	APP_ERROR_CHECK_BOOL(success);
+	
+	//Setup Freefall/motion detection
+	success = mma8652_i2c_register_write(MMA8652_REG_FF_MT_CFG, 0x00 
+		& ~MMA8652_FF_MT_CFG_ELE	//ELE bit = 0 => interrupt indicate real time status
+		| MMA8652_FF_MT_CFG_OAE		//OAE bit = 1 => motion detection
+		| MMA8652_FF_MT_CFG_XEFE	//enable detection on all 3 axis
+		| MMA8652_FF_MT_CFG_YEFE	//enable detection on all 3 axis
+		| MMA8652_FF_MT_CFG_ZEFE);	//enable detection on all 3 axis
+	APP_ERROR_CHECK_BOOL(success);
+	
+	//Set motion detection threshold
+	success = mma8652_i2c_register_write(MMA8652_REG_FF_MT_THS, 
+		ACCEL_MOTION_THRESHOLD & MMA8652_FF_MT_THS_MSK);
+	APP_ERROR_CHECK_BOOL(success);
+	
+	//Set motion detection delay
+	success = mma8652_i2c_register_write(MMA8652_REG_FF_MT_COUNT,
+		ACCEL_MOTION_DELAY);
+	APP_ERROR_CHECK_BOOL(success);
+	
+	//Enter ACTIVE mode
+	success = mma8652_active();
+	APP_ERROR_CHECK_BOOL(success);
 }
 
 /**@brief Function for the Timer initialization.
@@ -796,10 +874,10 @@ static void gpiote_init(void)
 	
 	//Setup pins and transitions to interrupt from
 	uint32_t err_code;
-	uint32_t lo_to_hi_bitmask = (1UL << ACC_INT1_PIN)
+	uint32_t hi_to_lo_bitmask = (1UL << ACC_INT1_PIN)
 								& (1UL << ACC_INT2_PIN)
-								& (1UL << CHRG_STAT_PIN); //pins to be notified of transition low -> high
-	uint32_t hi_to_lo_bitmask = (1UL << CHRG_STAT_PIN); //pins to be notified of transition high -> low
+								& (1UL << CHRG_STAT_PIN); //pins to be notified of transition high -> low
+	uint32_t lo_to_hi_bitmask = (1UL << CHRG_STAT_PIN); //pins to be notified of transition low -> high
 	
 	err_code = app_gpiote_user_register(&m_gpiote_user_id,
 								lo_to_hi_bitmask,
@@ -828,9 +906,10 @@ static void power_manage(void)
 int main(void)
 {
     // Initialize
+	debug_init();
     pins_init();
 	//TODO adc_init();
-	debug_init();
+	accelerometer_init();
     timers_init();
     gpiote_init();	
     ble_stack_init();
