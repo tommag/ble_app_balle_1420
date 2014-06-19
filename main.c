@@ -91,7 +91,7 @@ void pstorage_sys_event_handler (uint32_t p_evt);
 #define	BATT_MIN_VOLTAGE_MV				3000	//The minimum battery voltage in mV, used for % calculation and low battery action
 #define BATT_MEAS_AVG_FACTOR			3		//The inverse of the weight to use for the running average smoothing of the read value
 //Example with 3 : new_voltage = new_meas/3 + old_voltage*2/3
-#define BATT_MEAS_INTERVAL_MS			125		//The interval between two measurements (to set up the application timer)			
+#define BATT_MEAS_INTERVAL_MS			2000		//The interval between two measurements (to set up the application timer)			
 // 8Hz (125ms) is the highest frequency recommanded for this configuration (see adc_read_batt_voltage_mv function)
 
 uint32_t m_batt_current_voltage_mv = 0;		//The current, smoothed out, battery voltage
@@ -276,7 +276,7 @@ static void on_app_event(app_state_events_t event)
 		default: break;
 	}
 	
-	debug_log("[APPL]: Event 0x%02x occurred, new state : 0x%02x", event, m_current_state);
+	debug_log("[APPL]: Event 0x%02x occurred, new state : 0x%02x \r\n", event, m_current_state);
 }
 
 /**@brief Function called when an interrupt is sent by the accelerometer via the Scheduler
@@ -326,7 +326,7 @@ void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p
 	
 	debug_log("[APPL]: ASSERT: %s, %d, error 0x%08x\r\n", p_file_name, line_num, error_code);
 	
-	nrf_delay_ms(2000);
+	nrf_delay_ms(10000); //TODO !
 
     // On assert, the system can only recover with a reset.
     NVIC_SystemReset();
@@ -461,6 +461,8 @@ static void adc_start(void)
  */
 static void adc_init(void)
 {
+	uint32_t err_code;
+	
 	//Recommended configuration found at :
 	//https://devzone.nordicsemi.com/question/990/how-to-measure-lithium-battery-voltage/
 	//10-bit mode, analog input without prescaling, reference : 1.V band gap
@@ -475,7 +477,10 @@ static void adc_init(void)
 
 	//Setup ADC interrupt
 	NRF_ADC->INTENSET = ADC_INTENSET_END_Enabled << ADC_INTENSET_END_Pos;
-	APP_ERROR_CHECK(sd_nvic_EnableIRQ(ADC_IRQn)); //TODO priority ?
+	err_code = sd_nvic_SetPriority(ADC_IRQn, NRF_APP_PRIORITY_LOW);
+	APP_ERROR_CHECK(err_code);
+	err_code = sd_nvic_EnableIRQ(ADC_IRQn); 
+	APP_ERROR_CHECK(err_code);
 	
 	//Enable ADC.
 	NRF_ADC->ENABLE = ADC_ENABLE_ENABLE_Enabled;
@@ -525,6 +530,8 @@ static void adc_process_new_measurement(void)
 	{
 		on_app_event(ON_LOW_BATT);
 	}
+	
+	debug_log("[APPL]: New battery voltage (mV) : %u \r\n", m_batt_current_voltage_mv);
 }
 
 /**@brief ADC interrupt handler, executed at the end of a conversion
@@ -1023,12 +1030,12 @@ int main(void)
     // Initialize
 	debug_init();
     pins_init();
-	adc_init();
-	accelerometer_init();
+	//accelerometer_init();
     timers_init();
     gpiote_init();	
     ble_stack_init();
-	pwm_init(); //must be started AFTER soft device init !
+	pwm_init(); //must be started AFTER soft device init ! otherwise we can't register IRQs
+	adc_init(); //must be started AFTER soft device init !
     scheduler_init();    
     gap_params_init();
     advertising_init();
