@@ -87,8 +87,10 @@ static ble_bls_t												m_bls;																			//Ball lighting service dat
 void pstorage_sys_event_handler (uint32_t p_evt);
 
 //Battery voltage measurement parameters and variables
-#define BATT_MAX_VOLTAGE_MV				4200	//The maximum battery voltage in mV (for percentage calculations)
-#define	BATT_MIN_VOLTAGE_MV				3000	//The minimum battery voltage in mV, used for % calculation and low battery action
+//TODO #define BATT_MAX_VOLTAGE_MV				4200	//The maximum battery voltage in mV (for percentage calculations)
+//TODO #define	BATT_MIN_VOLTAGE_MV				3000	//The minimum battery voltage in mV, used for % calculation and low battery action
+#define BATT_MAX_VOLTAGE_MV				3100	//The maximum battery voltage in mV (for percentage calculations)
+#define	BATT_MIN_VOLTAGE_MV				2200	//The minimum battery voltage in mV, used for % calculation and low battery action
 #define BATT_MEAS_AVG_FACTOR			3		//The inverse of the weight to use for the running average smoothing of the read value
 //Example with 3 : new_voltage = new_meas/3 + old_voltage*2/3
 #define BATT_MEAS_INTERVAL_MS			2000		//The interval between two measurements (to set up the application timer)			
@@ -521,7 +523,11 @@ static void adc_process_new_measurement(void)
 	//At the moment, very simple algorithm assuming that the voltage variation is linear (obviously false)
 	m_batt_percentage = ((m_batt_current_voltage_mv-BATT_MIN_VOLTAGE_MV)*100) / (BATT_MAX_VOLTAGE_MV-BATT_MIN_VOLTAGE_MV);
 	
-	//TODO extreme cases ? check that % is between 0 and 100
+	//Check that the percentage is between 0 and 100 !
+	if(m_batt_current_voltage_mv < BATT_MIN_VOLTAGE_MV)
+		m_batt_percentage = 0;
+	else if(m_batt_percentage > 100)
+		m_batt_percentage = 100;
 	
 	//If the new value is lower than the min allowed voltage and the battery is not charging :
 	//go into power down mode
@@ -531,7 +537,7 @@ static void adc_process_new_measurement(void)
 		on_app_event(ON_LOW_BATT);
 	}
 	
-	debug_log("[APPL]: New battery voltage (mV) : %u \r\n", m_batt_current_voltage_mv);
+	//debug_log("[APPL]: New battery voltage : %u mV, %u %% \r\n", m_batt_current_voltage_mv, m_batt_percentage);
 }
 
 /**@brief ADC interrupt handler, executed at the end of a conversion
