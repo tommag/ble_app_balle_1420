@@ -11,17 +11,8 @@
  */
 
 /** @file
- *
- * @defgroup ble_sdk_app_template_main main.c
- * @{
- * @ingroup ble_sdk_app_template
- * @brief Template project main file.
- *
- * This file contains a template for creating a new application. It has the code necessary to wakeup
- * from button, advertise, get a connection restart advertising on disconnect and if no new
- * connection created go back to system-off mode.
- * It can easily be used as a starting point for creating a new application, the comments identified
- * with 'YOUR_JOB' indicates where and how you can customize.
+ * TODO documentation
+ * watchdog ?
  */
 
 #include <stdint.h>
@@ -59,7 +50,7 @@
 
 // YOUR_JOB: Modify these according to requirements.
 #define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_MAX_TIMERS            2                                           /**< Maximum number of simultaneously created timers. */
+#define APP_TIMER_MAX_TIMERS            3                                           /**< Maximum number of simultaneously created timers. */
 #define APP_TIMER_OP_QUEUE_SIZE         4                                           /**< Size of timer operation queues. */
 
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(500, UNIT_1_25_MS)            /**< Minimum acceptable connection interval (0.5 seconds). */
@@ -94,6 +85,18 @@ static ble_bls_t												m_bls;																			//Ball lighting service dat
 
 // Persistent storage system event handler
 void pstorage_sys_event_handler (uint32_t p_evt);
+
+//Battery voltage measurement parameters and variables
+#define BATT_MAX_VOLTAGE_MV				4200	//The maximum battery voltage in mV (for percentage calculations)
+#define	BATT_MIN_VOLTAGE_MV				3000	//The minimum battery voltage in mV, used for % calculation and low battery action
+#define BATT_MEAS_AVG_FACTOR			3		//The inverse of the weight to use for the running average smoothing of the read value
+//Example with 3 : new_voltage = new_meas/3 + old_voltage*2/3
+#define BATT_MEAS_INTERVAL_MS			125		//The interval between two measurements (to set up the application timer)			
+// 8Hz (125ms) is the highest frequency recommanded for this configuration (see adc_read_batt_voltage_mv function)
+
+uint32_t m_batt_current_voltage_mv = 0;		//The current, smoothed out, battery voltage
+uint32_t m_batt_percentage;					//The current battery percentage calculated from voltage
+app_timer_id_t m_adc_timer_id;				//The application timer ID that will start periodically the ADC
 
 //Accelerometer parameters
 #define ACCEL_SLEEP_DATARATE			(MMA8652_CTRL_REG1_ASLP_RATE_6_25_HZ) //6.25Hz sample frequency when in SLEEP mode
@@ -421,6 +424,120 @@ static void pwm_init(void)
 	
 }
 
+/**@brief Function for reading the battery voltage, using the last ADC measurement
+ * 
+ * @return The measured value in mV
+ */
+static uint32_t adc_read_batt_voltage_mv(void)
+{
+	//ADC configuration : reference = 1200 mV band gap, no input prescaling
+	//Battery voltage is measured through a 2.2M/10M voltage divider so we have to 
+	//multiply the read value by (10M+2.2M)/2.2M = 61/11
+	
+	//Read ADC measurement
+	uint32_t value = NRF_ADC->RESULT;
+	
+	//The measurement has to be * (61/11) (voltage divider) and * 1200/1023 (ADC reference/resolution)
+	value = ((value*61*1200)/11)/1023;
+	
+	return value;
+}
+
+/**@brief Function for triggering an ADC reading 
+ * The result will be processed in the ADC IRQ handler
+ */
+static void adc_start(void)
+{
+	NRF_ADC->TASKS_START = 1;
+}
+
+
+/**@brief Function for the ADC block initialization
+ * Used to read the battery voltage
+ * The analog pin to read from must be defined with : 
+ * #define BATT_VOLTAGE_AIN_NO		ADC_CONFIG_PSEL_AnalogInput0
+ *
+ * This function also initializes the battery voltage global variable (for the future averages)
+ */
+static void adc_init(void)
+{
+	//Recommended configuration found at :
+	//https://devzone.nordicsemi.com/question/990/how-to-measure-lithium-battery-voltage/
+	//10-bit mode, analog input without prescaling, reference : 1.V band gap
+	//analog input : set by define BATT_VOLTAGE_AIN_NO
+	//no external reference
+	
+	NRF_ADC->CONFIG = 	(ADC_CONFIG_RES_10bit 						<< ADC_CONFIG_RES_Pos) |
+						(ADC_CONFIG_INPSEL_AnalogInputNoPrescaling	<< ADC_CONFIG_INPSEL_Pos) |
+						(ADC_CONFIG_REFSEL_VBG						<< ADC_CONFIG_REFSEL_Pos) |
+						(BATT_VOLTAGE_AIN_NO						<< ADC_CONFIG_PSEL_Pos) |
+						(ADC_CONFIG_EXTREFSEL_None					<< ADC_CONFIG_EXTREFSEL_Pos); 
+
+	//Setup ADC interrupt
+	NRF_ADC->INTENSET = ADC_INTENSET_END_Enabled << ADC_INTENSET_END_Pos;
+	APP_ERROR_CHECK(sd_nvic_EnableIRQ(ADC_IRQn)); //TODO priority ?
+	
+	//Enable ADC.
+	NRF_ADC->ENABLE = ADC_ENABLE_ENABLE_Enabled;
+	
+	//Trigger a new conversion and wait for the result
+	NRF_ADC->EVENTS_END = 0; //Clear the flag
+	adc_start();
+	
+	//Wait for the end of the conversion
+	while(!NRF_ADC->EVENTS_END);
+	
+	NRF_ADC->EVENTS_END = 0; //Clear the flag
+	//Get the result
+	m_batt_current_voltage_mv = adc_read_batt_voltage_mv();
+}
+
+/**@brief Function for handling the battery voltage measurement
+ * This function is called by the ADC IRQ handler at the end of a conversion
+ * which must be started by adc_start();
+ * 
+ * This function takes care of smoothing the variations of the voltage. It stores
+ * the new voltage in the global variable m_batt_current_voltage_mv and calculates
+ * the battery percentage, stored in m_batt_percentage.
+ *
+ * This function also takes care of calling the low battery routines.
+ */
+static void adc_process_new_measurement(void)
+{
+	//Retrieve the latest measurement and convert it to mV
+	uint32_t new_meas = adc_read_batt_voltage_mv();
+	
+	//Calculate the current voltage based on the previous ones and the new measurement
+	//We use a running average of factor 1/BATT_MEAS_AVG_FACTOR
+	m_batt_current_voltage_mv = new_meas/BATT_MEAS_AVG_FACTOR + 
+		m_batt_current_voltage_mv*(BATT_MEAS_AVG_FACTOR-1)/BATT_MEAS_AVG_FACTOR;
+	
+	//Calculate the percentage
+	//At the moment, very simple algorithm assuming that the voltage variation is linear (obviously false)
+	m_batt_percentage = ((m_batt_current_voltage_mv-BATT_MIN_VOLTAGE_MV)*100) / (BATT_MAX_VOLTAGE_MV-BATT_MIN_VOLTAGE_MV);
+	
+	//TODO extreme cases ? check that % is between 0 and 100
+	
+	//If the new value is lower than the min allowed voltage and the battery is not charging :
+	//go into power down mode
+	if((m_batt_current_voltage_mv < BATT_MIN_VOLTAGE_MV) && 
+			(nrf_gpio_pin_read(CHRG_STAT_PIN) == 1))
+	{
+		on_app_event(ON_LOW_BATT);
+	}
+}
+
+/**@brief ADC interrupt handler, executed at the end of a conversion
+ */
+void ADC_IRQHandler(void)
+{
+	//Clear data ready event
+	NRF_ADC->EVENTS_END = 0;
+	
+	//Schedule the read_batt_voltage to be processed at the end of the event queue
+	app_sched_event_put(NULL, 0, adc_process_new_measurement);
+}
+
 /**@brief Function for the MMA8652 accelerometer initialization
  */
 static void accelerometer_init(void)
@@ -500,12 +617,11 @@ static void timers_init(void)
     // Initialize timer module, making it use the scheduler
     APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, true);
 
-    /* YOUR_JOB: Create any timers to be used by the application.
-                 Below is an example of how to create a timer.
-                 For every new timer needed, increase the value of the macro APP_TIMER_MAX_TIMERS by
-                 one.
-    err_code = app_timer_create(&m_app_timer_id, APP_TIMER_MODE_REPEATED, timer_timeout_handler);
-    APP_ERROR_CHECK(err_code); */
+	uint32_t err_code;
+	
+	//Register the ADC timer
+    err_code = app_timer_create(&m_adc_timer_id, APP_TIMER_MODE_REPEATED, adc_start);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -677,11 +793,11 @@ static void conn_params_init(void)
 */
 static void timers_start(void)
 {
-    /* YOUR_JOB: Start your timers. below is an example of how to start a timer.
     uint32_t err_code;
-
-    err_code = app_timer_start(m_app_timer_id, TIMER_INTERVAL, NULL);
-    APP_ERROR_CHECK(err_code); */
+	
+	//Start the ADC timer
+    err_code = app_timer_start(m_adc_timer_id, APP_TIMER_TICKS(BATT_MEAS_INTERVAL_MS, APP_TIMER_PRESCALER) , NULL);
+    APP_ERROR_CHECK(err_code); 
 }
 
 
@@ -907,7 +1023,7 @@ int main(void)
     // Initialize
 	debug_init();
     pins_init();
-	//TODO adc_init();
+	adc_init();
 	accelerometer_init();
     timers_init();
     gpiote_init();	
