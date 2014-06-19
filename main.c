@@ -50,8 +50,8 @@
 
 // YOUR_JOB: Modify these according to requirements.
 #define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_MAX_TIMERS            3                                           /**< Maximum number of simultaneously created timers. */
-#define APP_TIMER_OP_QUEUE_SIZE         4                                           /**< Size of timer operation queues. */
+#define APP_TIMER_MAX_TIMERS            4                                           /**< Maximum number of simultaneously created timers. */
+#define APP_TIMER_OP_QUEUE_SIZE         6                                           /**< Size of timer operation queues. */
 
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(500, UNIT_1_25_MS)            /**< Minimum acceptable connection interval (0.5 seconds). */
 #define MAX_CONN_INTERVAL               MSEC_TO_UNITS(1000, UNIT_1_25_MS)           /**< Maximum acceptable connection interval (1 second). */
@@ -76,7 +76,8 @@ static app_gpiote_user_id_t 			m_gpiote_user_id;							//GPIOTE library user ide
 
 static ble_gap_sec_params_t             m_sec_params;                               /**< Security requirements for this application. */
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
-static ble_bls_t												m_bls;																			//Ball lighting service data structure
+static ble_bls_t						m_bls;										//Ball lighting service data structure
+static ble_bas_t						m_bas;										//Battery service data structure
 
 // YOUR_JOB: Modify these according to requirements (e.g. if other event types are to pass through
 //           the scheduler).
@@ -93,12 +94,15 @@ void pstorage_sys_event_handler (uint32_t p_evt);
 #define	BATT_MIN_VOLTAGE_MV				2200	//The minimum battery voltage in mV, used for % calculation and low battery action
 #define BATT_MEAS_AVG_FACTOR			3		//The inverse of the weight to use for the running average smoothing of the read value
 //Example with 3 : new_voltage = new_meas/3 + old_voltage*2/3
-#define BATT_MEAS_INTERVAL_MS			2000		//The interval between two measurements (to set up the application timer)			
+#define BATT_MEAS_INTERVAL_MS			125		//The interval between two measurements (to set up the application timer)			
 // 8Hz (125ms) is the highest frequency recommanded for this configuration (see adc_read_batt_voltage_mv function)
+#define BATT_NOTIFICATION_INTERVAL_MIN_MS	4500	//The battery service will send notifications at non-periodic intervals. This is the lower boundary.
+#define BATT_NOTIFICATION_INTERVAL_MAX_MS	5500	//The battery service will send notifications at non-periodic intervals. This is the upper boundary.
 
 uint32_t m_batt_current_voltage_mv = 0;		//The current, smoothed out, battery voltage
 uint32_t m_batt_percentage;					//The current battery percentage calculated from voltage
 app_timer_id_t m_adc_timer_id;				//The application timer ID that will start periodically the ADC
+app_timer_id_t m_batt_srv_timer_id;			//The application timer ID that will start the battery service notification at random intervals.
 
 //Accelerometer parameters
 #define ACCEL_SLEEP_DATARATE			(MMA8652_CTRL_REG1_ASLP_RATE_6_25_HZ) //6.25Hz sample frequency when in SLEEP mode
@@ -352,17 +356,6 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 }
 
 
-/**@brief Function for handling Service errors.
- *
- * @details A pointer to this function will be passed to each service which may need to inform the
- *          application about an error.
- *
- * @param[in]   nrf_error   Error code containing information about what went wrong.
- */
-static void service_error_handler(uint32_t nrf_error)
-{
-    APP_ERROR_HANDLER(nrf_error);
-}
 
 /**@brief Function for GPIOTE events handling, called when a GPIO interrupt occurs
  * GPIOTE pins and transitions from which events occur are defined in gpiote_init() function
@@ -426,6 +419,58 @@ static void pwm_init(void)
 	
 }
 
+/**@brief Function that generates an interval for the BAS notification using the RNG
+ * Generate and return an interval in ms between BATT_NOTIFICATION_INTERVAL_MIN_MS and BATT_NOTIFICATION_INTERVAL_MAX_MS,
+ * using the Random Number Generator module (via the SoftDevice)
+ * 
+ * @return an randomly generated interval in ms, between the set boundaries
+ */
+static uint32_t batt_srv_generate_interval(void)
+{
+	uint8_t random_number, num_bytes_avail;
+	
+	//Wait for available random number
+	do 
+		sd_rand_application_bytes_available_get(&num_bytes_avail);
+	while(num_bytes_avail == 0);
+		
+	
+	uint32_t err_code = sd_rand_application_vector_get(&random_number, 1);
+	APP_ERROR_CHECK(err_code);
+	
+	uint32_t interval_ms = BATT_NOTIFICATION_INTERVAL_MIN_MS + (random_number * (BATT_NOTIFICATION_INTERVAL_MAX_MS - BATT_NOTIFICATION_INTERVAL_MIN_MS)) / 255; //RNG returns a 8-bit random number
+	
+	//debug_log("[APPL]: Random interval generated : %u \r\n", interval_ms);
+	
+	return interval_ms;
+}
+
+
+/**@brief Function for handling battery service notification timer timeout
+ * This function is called when the BAS notification timer times out, at random intervals between
+ * BATT_NOTIFICATION_INTERVAL_MIN_MS and BATT_NOTIFICATION_INTERVAL_MAX_MS. This is to avoid patterns
+ * when a high number of balls are being managed by the same Master : battery notifications will happen at random times.
+ *
+ * This function takes the latest calculated battery percentage and passes it to the Battery service, 
+ * then set up the timer for the next notification
+ */
+static void batt_srv_timer_handler(void)
+{
+	uint32_t err_code;
+	
+	//Update BAS battery level if a valid connection is established
+	if(m_bas.conn_handle != BLE_CONN_HANDLE_INVALID && m_bas.is_notification_supported)
+	{
+		err_code = ble_bas_battery_level_update(&m_bas, m_batt_percentage); //will return NRF_ERROR_INVALID_STATE if not connected
+		APP_ERROR_CHECK(err_code);
+	}
+	
+	//Setup new timer
+	err_code = app_timer_start(m_batt_srv_timer_id, APP_TIMER_TICKS(batt_srv_generate_interval(), APP_TIMER_PRESCALER) , NULL);
+	APP_ERROR_CHECK(err_code);
+}
+
+
 /**@brief Function for reading the battery voltage, using the last ADC measurement
  * 
  * @return The measured value in mV
@@ -445,59 +490,6 @@ static uint32_t adc_read_batt_voltage_mv(void)
 	return value;
 }
 
-/**@brief Function for triggering an ADC reading 
- * The result will be processed in the ADC IRQ handler
- */
-static void adc_start(void)
-{
-	NRF_ADC->TASKS_START = 1;
-}
-
-
-/**@brief Function for the ADC block initialization
- * Used to read the battery voltage
- * The analog pin to read from must be defined with : 
- * #define BATT_VOLTAGE_AIN_NO		ADC_CONFIG_PSEL_AnalogInput0
- *
- * This function also initializes the battery voltage global variable (for the future averages)
- */
-static void adc_init(void)
-{
-	uint32_t err_code;
-	
-	//Recommended configuration found at :
-	//https://devzone.nordicsemi.com/question/990/how-to-measure-lithium-battery-voltage/
-	//10-bit mode, analog input without prescaling, reference : 1.V band gap
-	//analog input : set by define BATT_VOLTAGE_AIN_NO
-	//no external reference
-	
-	NRF_ADC->CONFIG = 	(ADC_CONFIG_RES_10bit 						<< ADC_CONFIG_RES_Pos) |
-						(ADC_CONFIG_INPSEL_AnalogInputNoPrescaling	<< ADC_CONFIG_INPSEL_Pos) |
-						(ADC_CONFIG_REFSEL_VBG						<< ADC_CONFIG_REFSEL_Pos) |
-						(BATT_VOLTAGE_AIN_NO						<< ADC_CONFIG_PSEL_Pos) |
-						(ADC_CONFIG_EXTREFSEL_None					<< ADC_CONFIG_EXTREFSEL_Pos); 
-
-	//Setup ADC interrupt
-	NRF_ADC->INTENSET = ADC_INTENSET_END_Enabled << ADC_INTENSET_END_Pos;
-	err_code = sd_nvic_SetPriority(ADC_IRQn, NRF_APP_PRIORITY_LOW);
-	APP_ERROR_CHECK(err_code);
-	err_code = sd_nvic_EnableIRQ(ADC_IRQn); 
-	APP_ERROR_CHECK(err_code);
-	
-	//Enable ADC.
-	NRF_ADC->ENABLE = ADC_ENABLE_ENABLE_Enabled;
-	
-	//Trigger a new conversion and wait for the result
-	NRF_ADC->EVENTS_END = 0; //Clear the flag
-	adc_start();
-	
-	//Wait for the end of the conversion
-	while(!NRF_ADC->EVENTS_END);
-	
-	NRF_ADC->EVENTS_END = 0; //Clear the flag
-	//Get the result
-	m_batt_current_voltage_mv = adc_read_batt_voltage_mv();
-}
 
 /**@brief Function for handling the battery voltage measurement
  * This function is called by the ADC IRQ handler at the end of a conversion
@@ -538,6 +530,62 @@ static void adc_process_new_measurement(void)
 	}
 	
 	//debug_log("[APPL]: New battery voltage : %u mV, %u %% \r\n", m_batt_current_voltage_mv, m_batt_percentage);
+}
+
+
+/**@brief Function for triggering an ADC reading 
+ * The result will be processed in the ADC IRQ handler
+ */
+static void adc_start(void)
+{
+	NRF_ADC->TASKS_START = 1;
+}
+
+
+/**@brief Function for the ADC block initialization
+ * Used to read the battery voltage
+ * The analog pin to read from must be defined with : 
+ * #define BATT_VOLTAGE_AIN_NO		ADC_CONFIG_PSEL_AnalogInput0
+ *
+ * This function also initializes the battery voltage global variable (for the future averages)
+ */
+static void adc_init(void)
+{
+	uint32_t err_code;
+	
+	//Recommended configuration found at :
+	//https://devzone.nordicsemi.com/question/990/how-to-measure-lithium-battery-voltage/
+	//10-bit mode, analog input without prescaling, reference : 1.V band gap
+	//analog input : set by define BATT_VOLTAGE_AIN_NO
+	//no external reference
+	
+	NRF_ADC->CONFIG = 	(ADC_CONFIG_RES_10bit 						<< ADC_CONFIG_RES_Pos) |
+						(ADC_CONFIG_INPSEL_AnalogInputNoPrescaling	<< ADC_CONFIG_INPSEL_Pos) |
+						(ADC_CONFIG_REFSEL_VBG						<< ADC_CONFIG_REFSEL_Pos) |
+						(BATT_VOLTAGE_AIN_NO						<< ADC_CONFIG_PSEL_Pos) |
+						(ADC_CONFIG_EXTREFSEL_None					<< ADC_CONFIG_EXTREFSEL_Pos); 
+
+	//Enable ADC.
+	NRF_ADC->ENABLE = ADC_ENABLE_ENABLE_Enabled;
+	
+	//Trigger a new conversion and wait for the result
+	NRF_ADC->EVENTS_END = 0; //Clear the flag
+	adc_start();
+	
+	//Wait for the end of the conversion
+	while(!NRF_ADC->EVENTS_END);
+	
+	NRF_ADC->EVENTS_END = 0; //Clear the flag
+	//Get the result
+	m_batt_current_voltage_mv = adc_read_batt_voltage_mv(); //Initialize the voltage variable
+	adc_process_new_measurement(); //Initialize the battery percentage before starting the BLE Battery service
+	
+	//Setup ADC interrupt
+	NRF_ADC->INTENSET = ADC_INTENSET_END_Enabled << ADC_INTENSET_END_Pos;
+	err_code = sd_nvic_SetPriority(ADC_IRQn, NRF_APP_PRIORITY_LOW);
+	APP_ERROR_CHECK(err_code);
+	err_code = sd_nvic_EnableIRQ(ADC_IRQn); 
+	APP_ERROR_CHECK(err_code);
 }
 
 /**@brief ADC interrupt handler, executed at the end of a conversion
@@ -635,6 +683,10 @@ static void timers_init(void)
 	//Register the ADC timer
     err_code = app_timer_create(&m_adc_timer_id, APP_TIMER_MODE_REPEATED, adc_start);
     APP_ERROR_CHECK(err_code);
+	
+	//Register the battery service notification timer
+	err_code = app_timer_create(&m_batt_srv_timer_id, APP_TIMER_MODE_SINGLE_SHOT, batt_srv_timer_handler);
+	APP_ERROR_CHECK(err_code);
 }
 
 
@@ -719,17 +771,33 @@ static void irled_handler(ble_bls_t *p_bls, uint8_t new_state)
 static void services_init(void)
 {
     uint32_t err_code;
-	ble_bls_init_t init;
+	ble_bls_init_t bls_init;
+	ble_bas_init_t bas_init;
 
 	//Add Ball Lighting service
-	init.irled_handler = irled_handler;
-	init.wled_handler = wled_handler;
+	bls_init.irled_handler = irled_handler;
+	bls_init.wled_handler = wled_handler;
 
-	err_code = ble_bls_init(&m_bls, &init);
+	err_code = ble_bls_init(&m_bls, &bls_init);
 	APP_ERROR_CHECK(err_code);
 
 	//Add Battery service
-	//TODO 
+	memset(&bas_init, 0, sizeof(bas_init));
+	BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_char_attr_md.cccd_write_perm); //Allow GATT client to modify CCCD config (to disable notifications ?)
+	BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_char_attr_md.read_perm); //Allow reading on open links
+	BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&bas_init.battery_level_char_attr_md.write_perm); //No writing of the battery level by the client
+	
+	BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_report_read_perm); //Allow reading of battery level report char.
+	
+	bas_init.evt_handler = NULL;
+	bas_init.initial_batt_level = m_batt_percentage;
+	bas_init.p_report_ref = NULL; //No Report Reference descriptor needed
+	bas_init.support_notification = true;
+	
+	err_code = ble_bas_init(&m_bas, &bas_init);
+	APP_ERROR_CHECK(err_code);
+	
+	//TODO device information service ??
 }
 
 
@@ -811,6 +879,10 @@ static void timers_start(void)
 	//Start the ADC timer
     err_code = app_timer_start(m_adc_timer_id, APP_TIMER_TICKS(BATT_MEAS_INTERVAL_MS, APP_TIMER_PRESCALER) , NULL);
     APP_ERROR_CHECK(err_code); 
+	
+	//Start the BAS notification timer
+	err_code = app_timer_start(m_batt_srv_timer_id, APP_TIMER_TICKS(batt_srv_generate_interval(), APP_TIMER_PRESCALER) , NULL);
+	APP_ERROR_CHECK(err_code); 
 }
 
 
@@ -849,9 +921,11 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GAP_EVT_CONNECTED:
-//            nrf_gpio_pin_set(CONNECTED_LED_PIN_NO);
-//            nrf_gpio_pin_clear(ADVERTISING_LED_PIN_NO);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+		
+			//Set system attributes upon connection to avoid getting BLE_GATTS_EVT_SYS_ATTR_MISSING error
+            err_code = sd_ble_gatts_sys_attr_set(m_conn_handle, NULL, 0);
+            APP_ERROR_CHECK(err_code);
 
             /* YOUR_JOB: Uncomment this part if you are using the app_button module to handle button
                          events (assuming that the button events are only needed in connected
@@ -882,11 +956,6 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             err_code = sd_ble_gap_sec_params_reply(m_conn_handle,
                                                    BLE_GAP_SEC_STATUS_SUCCESS,
                                                    &m_sec_params);
-            APP_ERROR_CHECK(err_code);
-            break;
-
-        case BLE_GATTS_EVT_SYS_ATTR_MISSING:
-            err_code = sd_ble_gatts_sys_attr_set(m_conn_handle, NULL, 0);
             APP_ERROR_CHECK(err_code);
             break;
 
@@ -943,11 +1012,8 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 {
     on_ble_evt(p_ble_evt);
     ble_conn_params_on_ble_evt(p_ble_evt);
-	  ble_bls_on_ble_evt(&m_bls, p_ble_evt);
-    /*
-    YOUR_JOB: Add service ble_evt handlers calls here, like, for example:
+	ble_bls_on_ble_evt(&m_bls, p_ble_evt);
     ble_bas_on_ble_evt(&m_bas, p_ble_evt);
-    */
 }
 
 
