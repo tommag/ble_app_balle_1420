@@ -42,6 +42,7 @@
 #include "debug.h"
 #include "nrf_delay.h"
 #include "mma8652/mma8652.h"
+#include "led_user_feedback.h"
 
 #define DEVICE_NAME                     "Balle 14:20 v1"                           /**< Name of device. Will be included in the advertising data. */
 
@@ -50,8 +51,8 @@
 
 // YOUR_JOB: Modify these according to requirements.
 #define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_MAX_TIMERS            4                                           /**< Maximum number of simultaneously created timers. */
-#define APP_TIMER_OP_QUEUE_SIZE         6                                           /**< Size of timer operation queues. */
+#define APP_TIMER_MAX_TIMERS            5                                           /**< Maximum number of simultaneously created timers. */
+#define APP_TIMER_OP_QUEUE_SIZE         7                                           /**< Size of timer operation queues. */
 
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(500, UNIT_1_25_MS)            /**< Minimum acceptable connection interval (0.5 seconds). */
 #define MAX_CONN_INTERVAL               MSEC_TO_UNITS(1000, UNIT_1_25_MS)           /**< Maximum acceptable connection interval (1 second). */
@@ -111,6 +112,9 @@ app_timer_id_t m_batt_srv_timer_id;			//The application timer ID that will start
 #define ACCEL_WAKE_POWER_MODE			(MMA8652_CTRL_REG2_MODS_LP)	//Low power mode when in WAKE mode
 #define	ACCEL_MOTION_THRESHOLD			(16)	//Unit : 0.063 g/LSB, 0 -> 127 counts
 #define ACCEL_MOTION_DELAY				(2)	//see Table 57. in LP mode, 6.25Hz : time step = 160ms. Max value: 255
+
+//LED user feedback variables
+app_timer_id_t m_led_feedback_timer_id;		//The app. timer ID that will call the user feedback handler
 
 //States for the state machine
 typedef enum
@@ -419,6 +423,15 @@ static void pwm_init(void)
 	
 }
 
+/**@brief Function for updating the intensity of the white LED
+ * 
+ * @param[in] new_value: the new 8-bit value to pass to the PWM module
+ */
+static void wled_intensity_update(uint8_t new_value)
+{
+	nrf_pwm_set_value(0, new_value); // channel 0 for the PWM module
+}
+
 /**@brief Function that generates an interval for the BAS notification using the RNG
  * Generate and return an interval in ms between BATT_NOTIFICATION_INTERVAL_MIN_MS and BATT_NOTIFICATION_INTERVAL_MAX_MS,
  * using the Random Number Generator module (via the SoftDevice)
@@ -669,6 +682,53 @@ static void accelerometer_init(void)
 	APP_ERROR_CHECK_BOOL(success);
 }
 
+/**@brief Function for the LED user feedback initialization
+ * This module is used to indicate some events to the user by pulsing the white LED
+ */
+static void led_feedback_init()
+{
+	user_feedback_init(wled_intensity_update);
+}
+
+/**@brief Function for handling user feedback timer timeout
+ * called by the application timer
+ * Calls the user feedback module handler and starts again the timer if necessary
+ */
+static void led_feedback_timer_handler(void)
+{
+	uint16_t new_time = user_feedback_timer_handler();
+	
+	if(new_time != 0)
+	{
+		uint32_t err_code = app_timer_start(m_led_feedback_timer_id, APP_TIMER_TICKS(new_time, APP_TIMER_PRESCALER) , NULL);
+		APP_ERROR_CHECK(err_code);
+	}
+}
+
+/**@brief Start a new user feedback process using the provided configuration struct
+ * Set up the user feedback module then start an application timer that will
+ * call the module for the next event
+ *
+ * @param[in] p_feedback_config: a pointer to the config to use
+ */
+static void led_feedback_start(user_feedback_config_t *p_feedback_config)
+{
+	uint16_t time = user_feedback_start(p_feedback_config);
+	
+	if(time != 0)
+	{
+		uint32_t err_code = app_timer_start(m_led_feedback_timer_id, APP_TIMER_TICKS(time, APP_TIMER_PRESCALER) , NULL);
+		APP_ERROR_CHECK(err_code);
+	}
+}
+
+/**@brief Stop the running user feedback process 
+ */
+static void led_feedback_stop(void)
+{
+	user_feedback_stop();
+}
+
 /**@brief Function for the Timer initialization.
  *
  * @details Initializes the timer module.
@@ -686,6 +746,10 @@ static void timers_init(void)
 	
 	//Register the battery service notification timer
 	err_code = app_timer_create(&m_batt_srv_timer_id, APP_TIMER_MODE_SINGLE_SHOT, batt_srv_timer_handler);
+	APP_ERROR_CHECK(err_code);
+	
+	//Register the LED user feedback timer
+	err_code = app_timer_create(&m_led_feedback_timer_id, APP_TIMER_MODE_SINGLE_SHOT, led_feedback_timer_handler);
 	APP_ERROR_CHECK(err_code);
 }
 
@@ -756,7 +820,7 @@ static void advertising_init(void)
  */
 static void wled_handler(ble_bls_t *p_bls, uint8_t new_value)
 {
-	nrf_pwm_set_value(0, new_value); // channel 0 for the PWM module
+	wled_intensity_update(new_value);
 }
 
 /**@brief Function for handling new values received by BLE for the IR LEDs state
@@ -1104,7 +1168,8 @@ int main(void)
     pins_init();
 	//accelerometer_init();
     timers_init();
-    gpiote_init();	
+    gpiote_init();
+	led_feedback_init();
     ble_stack_init();
 	pwm_init(); //must be started AFTER soft device init ! otherwise we can't register IRQs
 	adc_init(); //must be started AFTER soft device init !
