@@ -33,7 +33,6 @@
 #include "app_timer.h"
 #include "ble_error_log.h"
 #include "app_gpiote.h"
-#include "app_button.h"
 #include "ble_debug_assert_handler.h"
 #include "pstorage.h"
 #include "ble_ball_lighting_service.h"
@@ -46,17 +45,16 @@
 
 #define DEVICE_NAME                     "Balle 14:20 v1"                           /**< Name of device. Will be included in the advertising data. */
 
-#define APP_ADV_INTERVAL                64                                          /**< The advertising interval (in units of 0.625 ms. This value corresponds to 40 ms). */
+#define APP_ADV_INTERVAL                MSEC_TO_UNITS(40, UNIT_0_625_MS)            /**< The advertising interval (in units of 0.625 ms) Min 20 ms. */
 #define APP_ADV_TIMEOUT_IN_SECONDS      180                                         /**< The advertising timeout (in units of seconds). */
 
-// YOUR_JOB: Modify these according to requirements.
 #define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
 #define APP_TIMER_MAX_TIMERS            5                                           /**< Maximum number of simultaneously created timers. */
-#define APP_TIMER_OP_QUEUE_SIZE         7                                           /**< Size of timer operation queues. */
+#define APP_TIMER_OP_QUEUE_SIZE         8                                           /**< Size of timer operation queues. */
 
-#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(500, UNIT_1_25_MS)            /**< Minimum acceptable connection interval (0.5 seconds). */
-#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(1000, UNIT_1_25_MS)           /**< Maximum acceptable connection interval (1 second). */
-#define SLAVE_LATENCY                   0                                           /**< Slave latency. */
+#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(8, UNIT_1_25_MS)              /**< Minimum acceptable connection interval (8 ms). */
+#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(25, UNIT_1_25_MS)             /**< Maximum acceptable connection interval (25 ms). */
+#define SLAVE_LATENCY                   2                                           /**< Slave latency. */
 #define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)             /**< Connection supervisory timeout (4 seconds). */
 #define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(20000, APP_TIMER_PRESCALER) /**< Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (15 seconds). */
 #define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER)  /**< Time between each call to sd_ble_gap_conn_param_update after the first call (5 seconds). */
@@ -80,10 +78,8 @@ static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;
 static ble_bls_t						m_bls;										//Ball lighting service data structure
 static ble_bas_t						m_bas;										//Battery service data structure
 
-// YOUR_JOB: Modify these according to requirements (e.g. if other event types are to pass through
-//           the scheduler).
 #define SCHED_MAX_EVENT_DATA_SIZE       sizeof(app_timer_event_t)                   /**< Maximum size of scheduler events. Note that scheduler BLE stack events do not contain any data, as the events are being pulled from the stack in the event handler. */
-#define SCHED_QUEUE_SIZE                10                                          /**< Maximum number of events in the scheduler queue. */
+#define SCHED_QUEUE_SIZE                40                                          /**< Maximum number of events in the scheduler queue. */
 
 // Persistent storage system event handler
 void pstorage_sys_event_handler (uint32_t p_evt);
@@ -140,6 +136,13 @@ typedef enum
 
 static volatile app_states_t m_current_state = STATE_INIT;
 
+//Forward declarations of functions needed by the state machine
+static void advertising_start(void);
+static void led_feedback_start(user_feedback_config_t *p_feedback_config);
+static void led_feedback_stop(void);
+static void wled_intensity_update(uint8_t new_value);
+
+
 /* Actions to do when entering the STANDBY state :
  * Start a timer to detect the activity timeout
  * Perform energy saving optimizations
@@ -148,7 +151,7 @@ static volatile app_states_t m_current_state = STATE_INIT;
 static void action_enter_standby(void)
 {
 	m_current_state = STATE_STANDBY;
-	//TODO
+	//TODO activity timeout
 }
 
 /* Actions to do when entering the power down state (after a low battery event or activity timeout)
@@ -160,7 +163,24 @@ static void action_enter_standby(void)
  */
 static void action_enter_power_down(void)
 {
-	//TODO
+	//TODO have a look at the GPIOTE module drawing 1mA
+	
+	debug_log("[APPL]: Low battery, powering down \r\n");
+	
+	//Turn off accelerometer
+//TODO TEMP	mma8652_standby();
+	
+	//Turn off both LEDs
+	nrf_gpio_pin_clear(IRLED_PIN);
+	wled_intensity_update(0);
+	
+	// Configure battery charge IC with sense level low as wakeup source.
+	nrf_gpio_cfg_sense_input(CHRG_STAT_PIN,
+							 NRF_GPIO_PIN_PULLUP,
+							 NRF_GPIO_PIN_SENSE_LOW);
+	
+	// Go to system-off mode (this function will not return; wakeup will cause a reset)                
+	sd_power_system_off();
 }
 
 /* Actions to do when entering the ACTIVE state 
@@ -177,8 +197,16 @@ static void on_accelerometer_event(void)
 	{
 		case STATE_STANDBY:
 			m_current_state = STATE_FIRST_CONN_ATT;
-			//TODO start user feedback
-			//TODO start advertising
+			
+			//Start user feedback (slow heartbeat)
+			user_feedback_config_t fb_config;
+			fb_config.mode = USER_FB_HEARTBEAT;
+			fb_config.intensity = 64;
+			fb_config.time_on_ms = 3000;
+			led_feedback_start(&fb_config);
+	
+			//Start advertising
+			advertising_start();
 			break;
 		default:
 			break;
@@ -191,8 +219,18 @@ static void on_advertising_timeout(void)
 	switch(m_current_state)
 	{
 		case STATE_FIRST_CONN_ATT:
-			//TODO user feedback
+		{
+			//User feedback - 3 short pulses
+			user_feedback_config_t fb_config;
+			fb_config.mode = USER_FB_PULSE;
+			fb_config.intensity = 255;
+			fb_config.num_pulses = 3;
+			fb_config.time_on_ms = 100;
+			fb_config.time_off_ms = 100;
+			led_feedback_start(&fb_config);
+
 			action_enter_standby();
+		}
 			break;
 		case STATE_NEW_CONN_ATT:
 			action_enter_standby();
@@ -209,7 +247,8 @@ static void on_connection_timeout(void)
 	{
 		case STATE_ACTIVE:
 			m_current_state = STATE_NEW_CONN_ATT; //Try to establish a new connection immediately
-			//TODO start advertising
+			//Start advertising
+			advertising_start();
 			break;
 		default:
 			break;
@@ -235,7 +274,16 @@ static void on_disconnect_rq(void)
 	switch(m_current_state)
 	{
 		case STATE_ACTIVE:
-			//TODO user feedback
+		{
+			//User feedback : 1 short bright pulse
+			user_feedback_config_t fb_config;
+			fb_config.mode = USER_FB_PULSE;
+			fb_config.intensity = 255;
+			fb_config.num_pulses = 1;
+			fb_config.time_on_ms = 100;
+			fb_config.time_off_ms = 100;
+			led_feedback_start(&fb_config);
+		}
 			action_enter_standby();
 			break;
 		default:
@@ -249,7 +297,16 @@ static void on_connection_success(void)
 	switch(m_current_state)
 	{
 		case STATE_FIRST_CONN_ATT:
-			//TODO user feedback
+		{
+			//User feedback : 1 long light pulse
+			user_feedback_config_t fb_config;
+			fb_config.mode = USER_FB_PULSE;
+			fb_config.intensity = 127;
+			fb_config.num_pulses = 1;
+			fb_config.time_on_ms = 1500;
+			fb_config.time_off_ms = 100;
+			led_feedback_start(&fb_config);
+		}
 			action_enter_active();
 			break;
 		case STATE_NEW_CONN_ATT:
@@ -305,6 +362,7 @@ static void on_accelerometer_interrupt(void * p_event_data, uint16_t event_size)
 static void on_battery_charge_stop(void * p_event_data, uint16_t event_size)
 {
 	//Do nothing
+	debug_log("[APPL]: Battery charge stop \r\n");
 }
 
 /**@brief Function called when the battery charge starts
@@ -312,6 +370,7 @@ static void on_battery_charge_stop(void * p_event_data, uint16_t event_size)
 static void on_battery_charge_start(void * p_event_data, uint16_t event_size)
 {
 	//Do nothing
+	debug_log("[APPL]: Battery charge start \r\n");
 }
 
 /**@brief Function for error handling, which is called when an error has occurred.
@@ -395,13 +454,19 @@ void gpiote_event_handler(uint32_t event_pins_lo_to_hi, uint32_t event_pins_hi_t
  */
 static void pins_init(void)
 {
-	//Init LED output
+	//Init IR LED output
 	nrf_gpio_cfg_output(IRLED_PIN); //simple output
+	//TODO TEMP
+	NRF_GPIO->PIN_CNF[IRLED_PIN] &= ~(GPIO_PIN_CNF_DRIVE_Msk);
+	NRF_GPIO->PIN_CNF[IRLED_PIN] |= (GPIO_PIN_CNF_DRIVE_S0H1 << GPIO_PIN_CNF_DRIVE_Pos);
+
 	
 	//Init accelerometer interrupt inputs with no pull resistor
 	//The GPIOTE handling library takes care of defining the SENSE fields
-	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
-	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
+//TODO TEMP	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
+//	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
+	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_NOSENSE);
+	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_NOSENSE);
 	
 	//Init battery charger status input with pull up resistor
 	nrf_gpio_cfg_sense_input(CHRG_STAT_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_NOSENSE);
@@ -421,6 +486,9 @@ static void pwm_init(void)
 	
 	nrf_pwm_init(&pwm_config);
 	
+	//TODO TEMP
+	NRF_GPIO->PIN_CNF[WLED_PIN] &= ~(GPIO_PIN_CNF_DRIVE_Msk);
+	NRF_GPIO->PIN_CNF[WLED_PIN] |= (GPIO_PIN_CNF_DRIVE_S0H1 << GPIO_PIN_CNF_DRIVE_Pos);
 }
 
 /**@brief Function for updating the intensity of the white LED
@@ -475,7 +543,7 @@ static void batt_srv_timer_handler(void)
 	if(m_bas.conn_handle != BLE_CONN_HANDLE_INVALID && m_bas.is_notification_supported)
 	{
 		err_code = ble_bas_battery_level_update(&m_bas, m_batt_percentage); //will return NRF_ERROR_INVALID_STATE if not connected
-		APP_ERROR_CHECK(err_code);
+		//APP_ERROR_CHECK(err_code); //disabled because fire a NRF_ERROR_INVALID_STATE if client hasn't enabled notifications
 	}
 	
 	//Setup new timer
@@ -895,7 +963,7 @@ static void on_conn_params_evt(ble_conn_params_evt_t * p_evt)
 
     if(p_evt->evt_type == BLE_CONN_PARAMS_EVT_FAILED)
     {
-        err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
+        err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE); //TODO un peu violent non ?
         APP_ERROR_CHECK(err_code);
     }
 }
@@ -968,7 +1036,6 @@ static void advertising_start(void)
 
     err_code = sd_ble_gap_adv_start(&adv_params);
     APP_ERROR_CHECK(err_code);
-    //nrf_gpio_pin_set(ADVERTISING_LED_PIN_NO);
 }
 
 
@@ -990,32 +1057,22 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 			//Set system attributes upon connection to avoid getting BLE_GATTS_EVT_SYS_ATTR_MISSING error
             err_code = sd_ble_gatts_sys_attr_set(m_conn_handle, NULL, 0);
             APP_ERROR_CHECK(err_code);
-
-            /* YOUR_JOB: Uncomment this part if you are using the app_button module to handle button
-                         events (assuming that the button events are only needed in connected
-                         state). If this is uncommented out here,
-                            1. Make sure that app_button_disable() is called when handling
-                               BLE_GAP_EVT_DISCONNECTED below.
-                            2. Make sure the app_button module is initialized.
-            err_code = app_button_enable();
-            APP_ERROR_CHECK(err_code);
-            */
+			
+			//Call application event
+			on_app_event(ON_CONNECTION_SUCCESS);
+		
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
-//            nrf_gpio_pin_clear(CONNECTED_LED_PIN_NO);
             m_conn_handle = BLE_CONN_HANDLE_INVALID;
-
-            /* YOUR_JOB: Uncomment this part if you are using the app_button module to handle button
-                         events. This should be done to save power when not connected
-                         to a peer.
-            err_code = app_button_disable();
-            APP_ERROR_CHECK(err_code);
-            */
-            
-                advertising_start();
+			
+			if(p_ble_evt->evt.gap_evt.params.disconnected.reason == BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION)
+				on_app_event(ON_DISCONNECT_RQ);
+			else 
+				on_app_event(ON_CONNECTION_TIMEOUT); //Handle all failures the same way as a timeout
             break;
 
+		//TODO security, parameters, etc ???
         case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
             err_code = sd_ble_gap_sec_params_reply(m_conn_handle,
                                                    BLE_GAP_SEC_STATUS_SUCCESS,
@@ -1044,18 +1101,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 
         case BLE_GAP_EVT_TIMEOUT:
             if (p_ble_evt->evt.gap_evt.params.timeout.src == BLE_GAP_TIMEOUT_SRC_ADVERTISEMENT)
-            {
- //               nrf_gpio_pin_clear(ADVERTISING_LED_PIN_NO);
-
-                // Configure buttons with sense level low as wakeup source.
-   /*             nrf_gpio_cfg_sense_input(WAKEUP_BUTTON_PIN,
-                                         BUTTON_PULL,
-                                         NRF_GPIO_PIN_SENSE_LOW);
-     */           
-                // Go to system-off mode (this function will not return; wakeup will cause a reset)                
-                err_code = sd_power_system_off();
-                APP_ERROR_CHECK(err_code);
-            }
+				on_app_event(ON_ADVERTISING_TIMEOUT);
             break;
 
         default:
@@ -1133,8 +1179,8 @@ static void gpiote_init(void)
 	//Setup pins and transitions to interrupt from
 	uint32_t err_code;
 	uint32_t hi_to_lo_bitmask = (1UL << ACC_INT1_PIN)
-								& (1UL << ACC_INT2_PIN)
-								& (1UL << CHRG_STAT_PIN); //pins to be notified of transition high -> low
+								| (1UL << ACC_INT2_PIN)
+								| (1UL << CHRG_STAT_PIN); //pins to be notified of transition high -> low
 	uint32_t lo_to_hi_bitmask = (1UL << CHRG_STAT_PIN); //pins to be notified of transition low -> high
 	
 	err_code = app_gpiote_user_register(&m_gpiote_user_id,
@@ -1180,13 +1226,20 @@ int main(void)
     conn_params_init();
     sec_params_init();
 	
-	debug_log("Init end \r\n");
-	//TODO boot feedback
-	m_current_state = STATE_STANDBY;
-
+	debug_log("[APPL]: Init end \r\n");
+	
+	//Boot feedback
+	user_feedback_config_t fb_config;
+	fb_config.mode = USER_FB_PULSE;
+	fb_config.intensity = 255;
+	fb_config.num_pulses = 1;
+	fb_config.time_on_ms = 100;
+	fb_config.time_off_ms = 0;
+	led_feedback_start(&fb_config);
+	
     // Start execution
     timers_start();
-    advertising_start();
+	m_current_state = STATE_STANDBY;
 
     // Enter main loop
     for (;;)

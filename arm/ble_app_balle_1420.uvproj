@@ -490,11 +490,6 @@
               <FilePath>..\..\..\..\..\Source\sd_common\softdevice_handler.c</FilePath>
             </File>
             <File>
-              <FileName>app_button.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\Source\app_common\app_button.c</FilePath>
-            </File>
-            <File>
               <FileName>app_gpiote.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\app_common\app_gpiote.c</FilePath>
@@ -538,6 +533,11 @@
               <FileName>twi_hw_master.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\twi_master\twi_hw_master.c</FilePath>
+            </File>
+            <File>
+              <FileName>led_user_feedback.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\led_user_feedback.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1027,11 +1027,6 @@
               <FilePath>..\..\..\..\..\Source\sd_common\softdevice_handler.c</FilePath>
             </File>
             <File>
-              <FileName>app_button.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\Source\app_common\app_button.c</FilePath>
-            </File>
-            <File>
               <FileName>app_gpiote.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\app_common\app_gpiote.c</FilePath>
@@ -1075,6 +1070,11 @@
               <FileName>twi_hw_master.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\twi_master\twi_hw_master.c</FilePath>
+            </File>
+            <File>
+              <FileName>led_user_feedback.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\led_user_feedback.c</FilePath>
             </File>
           </Files>
         </Group>
