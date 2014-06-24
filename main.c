@@ -49,7 +49,7 @@
 #define APP_ADV_TIMEOUT_IN_SECONDS      180                                         /**< The advertising timeout (in units of seconds). */
 
 #define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_MAX_TIMERS            5                                           /**< Maximum number of simultaneously created timers. */
+#define APP_TIMER_MAX_TIMERS            6                                           /**< Maximum number of simultaneously created timers. */
 #define APP_TIMER_OP_QUEUE_SIZE         8                                           /**< Size of timer operation queues. */
 
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(8, UNIT_1_25_MS)              /**< Minimum acceptable connection interval (8 ms). */
@@ -112,6 +112,10 @@ app_timer_id_t m_batt_srv_timer_id;			//The application timer ID that will start
 //LED user feedback variables
 app_timer_id_t m_led_feedback_timer_id;		//The app. timer ID that will call the user feedback handler
 
+//Activity timeout timer
+#define ACTIVITY_TIMEOUT_S				3600	//Power down the device after 1 hour spent in STANDBY mode
+app_timer_id_t m_activity_timer_id;				//The app. timer ID that will power down the device after too much time spent in STANDBY state
+
 //States for the state machine
 typedef enum
 {
@@ -151,7 +155,11 @@ static void wled_intensity_update(uint8_t new_value);
 static void action_enter_standby(void)
 {
 	m_current_state = STATE_STANDBY;
-	//TODO activity timeout
+	//TODO energy optimizations ? slow down ADC interrupt ?
+	//TODO accelerometer setup ?
+	
+	//Start activity timer
+	app_timer_start(m_activity_timer_id, APP_TIMER_TICKS(ACTIVITY_TIMEOUT_S*1000, APP_TIMER_PRESCALER), NULL);
 }
 
 /* Actions to do when entering the power down state (after a low battery event or activity timeout)
@@ -165,7 +173,7 @@ static void action_enter_power_down(void)
 {
 	//TODO have a look at the GPIOTE module drawing 1mA
 	
-	debug_log("[APPL]: Low battery, powering down \r\n");
+	debug_log("[APPL]: Low battery / no activity, powering down \r\n");
 	
 	//Turn off accelerometer
 //TODO TEMP	mma8652_standby();
@@ -204,6 +212,9 @@ static void on_accelerometer_event(void)
 			fb_config.intensity = 64;
 			fb_config.time_on_ms = 3000;
 			led_feedback_start(&fb_config);
+		
+			//Stop activity timer
+			app_timer_stop(m_activity_timer_id);
 	
 			//Start advertising
 			advertising_start();
@@ -355,6 +366,13 @@ static void on_app_event(app_state_events_t event)
 static void on_accelerometer_interrupt(void * p_event_data, uint16_t event_size)
 {
 	on_app_event(ON_ACCELEROMETER_EVENT);
+}
+
+/**@brief Funtion called when the activity timer expires (too much time spent in STANDBY mode). 
+ */
+static void activity_timer_handler(void)
+{
+	on_app_event(ON_ACTIVITY_TIMEOUT);
 }
 
 /**@brief Function called when the battery charge stops, either because it is complete or the charger is disconnected
@@ -819,6 +837,9 @@ static void timers_init(void)
 	//Register the LED user feedback timer
 	err_code = app_timer_create(&m_led_feedback_timer_id, APP_TIMER_MODE_SINGLE_SHOT, led_feedback_timer_handler);
 	APP_ERROR_CHECK(err_code);
+	
+	//Register the activity timeout timer
+	err_code = app_timer_create(&m_activity_timer_id, APP_TIMER_MODE_SINGLE_SHOT, activity_timer_handler);
 }
 
 
