@@ -37,6 +37,7 @@
 #include "pstorage.h"
 #include "ble_ball_lighting_service.h"
 #include "ble_bas.h" //Battery service
+#include "ble_dfus.h" //DFU trigger service
 #include "nrf_pwm.h"
 #include "debug.h"
 #include "nrf_delay.h"
@@ -72,11 +73,14 @@ static app_gpiote_user_id_t 			m_gpiote_user_id;							//GPIOTE library user ide
 #define SEC_PARAM_MAX_KEY_SIZE          16                                          /**< Maximum encryption key size. */
 
 #define DEAD_BEEF                       0xDEADBEEF                                  /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
+#define DFU_MAGIC_WORD_ADDR				(*(volatile uint32_t *) 0x20003c68) 		/**< Random address around the end of RAM, to store the magic word used to enter DFU. */
+#define DFU_MAGIC_WORD_VALUE			0xC1E1420									/**< The magic word value */
 
 static ble_gap_sec_params_t             m_sec_params;                               /**< Security requirements for this application. */
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
 static ble_bls_t						m_bls;										//Ball lighting service data structure
 static ble_bas_t						m_bas;										//Battery service data structure
+static ble_dfus_t						m_dfus;										//DFU Trigger service data structure
 
 #define SCHED_MAX_EVENT_DATA_SIZE       sizeof(app_timer_event_t)                   /**< Maximum size of scheduler events. Note that scheduler BLE stack events do not contain any data, as the events are being pulled from the stack in the event handler. */
 #define SCHED_QUEUE_SIZE                40                                          /**< Maximum number of events in the scheduler queue. */
@@ -85,13 +89,11 @@ static ble_bas_t						m_bas;										//Battery service data structure
 void pstorage_sys_event_handler (uint32_t p_evt);
 
 //Battery voltage measurement parameters and variables
-//TODO #define BATT_MAX_VOLTAGE_MV				4200	//The maximum battery voltage in mV (for percentage calculations)
-//TODO #define	BATT_MIN_VOLTAGE_MV				3000	//The minimum battery voltage in mV, used for % calculation and low battery action
-#define BATT_MAX_VOLTAGE_MV				3100	//The maximum battery voltage in mV (for percentage calculations)
-#define	BATT_MIN_VOLTAGE_MV				2200	//The minimum battery voltage in mV, used for % calculation and low battery action
-#define BATT_MEAS_AVG_FACTOR			3		//The inverse of the weight to use for the running average smoothing of the read value
+#define BATT_MAX_VOLTAGE_MV					4200	//The maximum battery voltage in mV (for percentage calculations)
+#define	BATT_MIN_VOLTAGE_MV					3000	//The minimum battery voltage in mV, used for % calculation and low battery action
+#define BATT_MEAS_AVG_FACTOR				3		//The inverse of the weight to use for the running average smoothing of the read value
 //Example with 3 : new_voltage = new_meas/3 + old_voltage*2/3
-#define BATT_MEAS_INTERVAL_MS			125		//The interval between two measurements (to set up the application timer)			
+#define BATT_MEAS_INTERVAL_MS				125		//The interval between two measurements (to set up the application timer)			
 // 8Hz (125ms) is the highest frequency recommanded for this configuration (see adc_read_batt_voltage_mv function)
 #define BATT_NOTIFICATION_INTERVAL_MIN_MS	4500	//The battery service will send notifications at non-periodic intervals. This is the lower boundary.
 #define BATT_NOTIFICATION_INTERVAL_MAX_MS	5500	//The battery service will send notifications at non-periodic intervals. This is the upper boundary.
@@ -106,14 +108,15 @@ app_timer_id_t m_batt_srv_timer_id;			//The application timer ID that will start
 #define ACCEL_WAKE_DATARATE				(MMA8652_CTRL_REG1_DATARATE_6_25_HZ)	//6.25Hz sample frequency when in WAKE mode
 #define ACCEL_SLEEP_POWER_MODE			(MMA8652_CTRL_REG2_SMODS_LP)	//Low power mode when in SLEEP mode
 #define ACCEL_WAKE_POWER_MODE			(MMA8652_CTRL_REG2_MODS_LP)	//Low power mode when in WAKE mode
-#define	ACCEL_MOTION_THRESHOLD			(16)	//Unit : 0.063 g/LSB, 0 -> 127 counts
-#define ACCEL_MOTION_DELAY				(2)	//see Table 57. in LP mode, 6.25Hz : time step = 160ms. Max value: 255
+#define	ACCEL_MOTION_THRESHOLD			(20)	//Unit : 0.063 g/LSB, 0 -> 127 counts
+#define ACCEL_MOTION_DELAY				(0)	//see Table 57. in LP mode, 6.25Hz : time step = 160ms. Max value: 255
 
 //LED user feedback variables
 app_timer_id_t m_led_feedback_timer_id;		//The app. timer ID that will call the user feedback handler
 
 //Activity timeout timer
-#define ACTIVITY_TIMEOUT_S				3600	//Power down the device after 1 hour spent in STANDBY mode
+//TODO #define ACTIVITY_TIMEOUT_S				3600	//Power down the device after 1 hour spent in STANDBY mode
+#define ACTIVITY_TIMEOUT_S				10	//Power down the device after 1 hour spent in STANDBY mode
 app_timer_id_t m_activity_timer_id;				//The app. timer ID that will power down the device after too much time spent in STANDBY state
 
 //States for the state machine
@@ -176,7 +179,8 @@ static void action_enter_power_down(void)
 	debug_log("[APPL]: Low battery / no activity, powering down \r\n");
 	
 	//Turn off accelerometer
-//TODO TEMP	mma8652_standby();
+	bool success = mma8652_standby();
+	APP_ERROR_CHECK_BOOL(success);
 	
 	//Turn off both LEDs
 	nrf_gpio_pin_clear(IRLED_PIN);
@@ -474,17 +478,11 @@ static void pins_init(void)
 {
 	//Init IR LED output
 	nrf_gpio_cfg_output(IRLED_PIN); //simple output
-	//TODO TEMP
-	NRF_GPIO->PIN_CNF[IRLED_PIN] &= ~(GPIO_PIN_CNF_DRIVE_Msk);
-	NRF_GPIO->PIN_CNF[IRLED_PIN] |= (GPIO_PIN_CNF_DRIVE_S0H1 << GPIO_PIN_CNF_DRIVE_Pos);
-
 	
 	//Init accelerometer interrupt inputs with no pull resistor
 	//The GPIOTE handling library takes care of defining the SENSE fields
-//TODO TEMP	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
-//	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
-	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_NOSENSE);
-	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_NOSENSE);
+	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
+	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
 	
 	//Init battery charger status input with pull up resistor
 	nrf_gpio_cfg_sense_input(CHRG_STAT_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_NOSENSE);
@@ -503,10 +501,6 @@ static void pwm_init(void)
 	pwm_config.gpio_num[0] = WLED_PIN;
 	
 	nrf_pwm_init(&pwm_config);
-	
-	//TODO TEMP
-	NRF_GPIO->PIN_CNF[WLED_PIN] &= ~(GPIO_PIN_CNF_DRIVE_Msk);
-	NRF_GPIO->PIN_CNF[WLED_PIN] |= (GPIO_PIN_CNF_DRIVE_S0H1 << GPIO_PIN_CNF_DRIVE_Pos);
 }
 
 /**@brief Function for updating the intensity of the white LED
@@ -919,6 +913,20 @@ static void irled_handler(ble_bls_t *p_bls, uint8_t new_state)
 	nrf_gpio_pin_write(IRLED_PIN, new_state); 
 }
 
+/**@brief Function for handling a command received by BLE to trigger DFU mode 
+ * Writes the magic word then restarts the CPU if the value is != 0
+ *
+ * TODO : security !
+ */
+static void dfu_trigger_handler(ble_dfus_t *p_dfus, uint8_t char_value)
+{
+	if(char_value)
+	{
+		DFU_MAGIC_WORD_ADDR = DFU_MAGIC_WORD_VALUE;
+		sd_nvic_SystemReset();
+	}
+}
+
 /**@brief Function for initializing services that will be used by the application.
  */
 static void services_init(void)
@@ -926,6 +934,7 @@ static void services_init(void)
     uint32_t err_code;
 	ble_bls_init_t bls_init;
 	ble_bas_init_t bas_init;
+	ble_dfus_init_t dfus_init;
 
 	//Add Ball Lighting service
 	bls_init.irled_handler = irled_handler;
@@ -950,6 +959,11 @@ static void services_init(void)
 	err_code = ble_bas_init(&m_bas, &bas_init);
 	APP_ERROR_CHECK(err_code);
 	
+	//Add DFU Trigger service
+	dfus_init.dfu_trigger_handler = dfu_trigger_handler;
+	err_code = ble_dfus_init(&m_dfus, &dfus_init);
+	APP_ERROR_CHECK(err_code);
+
 	//TODO device information service ??
 }
 
@@ -1145,6 +1159,7 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
     ble_conn_params_on_ble_evt(p_ble_evt);
 	ble_bls_on_ble_evt(&m_bls, p_ble_evt);
     ble_bas_on_ble_evt(&m_bas, p_ble_evt);
+	ble_dfus_on_ble_evt(&m_dfus, p_ble_evt);
 }
 
 
@@ -1233,13 +1248,13 @@ int main(void)
     // Initialize
 	debug_init();
     pins_init();
-	//accelerometer_init();
     timers_init();
     gpiote_init();
 	led_feedback_init();
     ble_stack_init();
 	pwm_init(); //must be started AFTER soft device init ! otherwise we can't register IRQs
 	adc_init(); //must be started AFTER soft device init !
+	accelerometer_init(); //must be started AFTER soft device init ! uses PPI functions
     scheduler_init();    
     gap_params_init();
     advertising_init();
@@ -1260,7 +1275,7 @@ int main(void)
 	
     // Start execution
     timers_start();
-	m_current_state = STATE_STANDBY;
+	action_enter_standby();
 
     // Enter main loop
     for (;;)
