@@ -45,7 +45,7 @@
             <InvalidFlash>1</InvalidFlash>
           </TargetStatus>
           <OutputDirectory>.\_build\</OutputDirectory>
-          <OutputName>ble_app_template</OutputName>
+          <OutputName>ble_app_balle_1420</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
           <CreateHexFile>1</CreateHexFile>
@@ -171,7 +171,7 @@
           </Flash1>
           <bUseTDR>1</bUseTDR>
           <Flash2>Segger\JL2CM3.dll</Flash2>
-          <Flash3></Flash3>
+          <Flash3>"" ()</Flash3>
           <Flash4></Flash4>
           <pFcarmOut></pFcarmOut>
           <pFcarmGrp></pFcarmGrp>
@@ -306,7 +306,7 @@
               <OCR_RVCT4>
                 <Type>1</Type>
                 <StartAddress>0x14000</StartAddress>
-                <Size>0x2b000</Size>
+                <Size>0x14400</Size>
               </OCR_RVCT4>
               <OCR_RVCT5>
                 <Type>1</Type>
@@ -444,6 +444,11 @@
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\ble\ble_services\ble_bas.c</FilePath>
             </File>
+            <File>
+              <FileName>ble_dfus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\ble_dfus.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -530,14 +535,14 @@
               <FilePath>..\mma8652\mma8652_i2c_wrapper_nrf51822.c</FilePath>
             </File>
             <File>
-              <FileName>twi_hw_master.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\Source\twi_master\twi_hw_master.c</FilePath>
-            </File>
-            <File>
               <FileName>led_user_feedback.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\led_user_feedback.c</FilePath>
+            </File>
+            <File>
+              <FileName>twi_hw_master.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\twi_hw_master.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -981,6 +986,11 @@
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\Source\ble\ble_services\ble_bas.c</FilePath>
             </File>
+            <File>
+              <FileName>ble_dfus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\ble_dfus.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1067,14 +1077,14 @@
               <FilePath>..\mma8652\mma8652_i2c_wrapper_nrf51822.c</FilePath>
             </File>
             <File>
-              <FileName>twi_hw_master.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\Source\twi_master\twi_hw_master.c</FilePath>
-            </File>
-            <File>
               <FileName>led_user_feedback.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\led_user_feedback.c</FilePath>
+            </File>
+            <File>
+              <FileName>twi_hw_master.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\twi_hw_master.c</FilePath>
             </File>
           </Files>
         </Group>
