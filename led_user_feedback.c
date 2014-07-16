@@ -17,7 +17,7 @@
 #include "led_user_feedback.h"
 
 const uint8_t heartbeat_states[USER_FB_HEARTBEAT_NB_STATES] =
-	{0,1,3,6,10,15,22,38,70,94,100,94,70,38,22,15,10,6,3,1}; //Values in percentage of the max. intensity
+	{0,1,2,4,6,8,11,16,21,28,38,51,67,80,90,97,100,97,90,80,67,51,38,28,21,16,11,8,6,4,2,1}; //Values in percentage of the max. intensity
 
 user_feedback_config_t feedback_last_config; //Last config set up
 bool feedback_on; //True if the feedback is running

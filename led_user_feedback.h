@@ -15,7 +15,7 @@
 #include <stdbool.h>
 
 //The number of different states to use in the HEARTBEAT pattern
-#define USER_FB_HEARTBEAT_NB_STATES		20
+#define USER_FB_HEARTBEAT_NB_STATES		32
 
 typedef enum
 {
