@@ -499,6 +499,8 @@ static void pwm_init(void)
 	pwm_config.mode = PWM_MODE_LED_255;
 	pwm_config.num_channels = 1;
 	pwm_config.gpio_num[0] = WLED_PIN;
+	pwm_config.ppi_channel[0] = 1; //TWI uses channel 0
+	pwm_config.ppi_channel[1] = 2;
 	
 	nrf_pwm_init(&pwm_config);
 }
