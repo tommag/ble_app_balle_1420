@@ -111,6 +111,8 @@ app_timer_id_t m_batt_srv_timer_id;			//The application timer ID that will start
 #define	ACCEL_MOTION_THRESHOLD			(20)	//Unit : 0.063 g/LSB, 0 -> 127 counts
 #define ACCEL_MOTION_DELAY				(0)	//see Table 57. in LP mode, 6.25Hz : time step = 160ms. Max value: 255
 
+#define PWM_MAX_VALUE					4095
+
 //LED user feedback variables
 app_timer_id_t m_led_feedback_timer_id;		//The app. timer ID that will call the user feedback handler
 
@@ -147,7 +149,7 @@ static volatile app_states_t m_current_state = STATE_INIT;
 static void advertising_start(void);
 static void led_feedback_start(user_feedback_config_t *p_feedback_config);
 static void led_feedback_stop(void);
-static void wled_intensity_update(uint8_t new_value);
+static void wled_intensity_update(uint32_t new_value);
 
 
 /* Actions to do when entering the STANDBY state :
@@ -213,7 +215,7 @@ static void on_accelerometer_event(void)
 			//Start user feedback (slow heartbeat)
 			user_feedback_config_t fb_config;
 			fb_config.mode = USER_FB_HEARTBEAT;
-			fb_config.intensity = 64;
+			fb_config.intensity = (PWM_MAX_VALUE/4);
 			fb_config.time_on_ms = 3000;
 			led_feedback_start(&fb_config);
 		
@@ -238,7 +240,7 @@ static void on_advertising_timeout(void)
 			//User feedback - 3 short pulses
 			user_feedback_config_t fb_config;
 			fb_config.mode = USER_FB_PULSE;
-			fb_config.intensity = 255;
+			fb_config.intensity = PWM_MAX_VALUE;
 			fb_config.num_pulses = 3;
 			fb_config.time_on_ms = 100;
 			fb_config.time_off_ms = 100;
@@ -293,7 +295,7 @@ static void on_disconnect_rq(void)
 			//User feedback : 1 short bright pulse
 			user_feedback_config_t fb_config;
 			fb_config.mode = USER_FB_PULSE;
-			fb_config.intensity = 255;
+			fb_config.intensity = PWM_MAX_VALUE;
 			fb_config.num_pulses = 1;
 			fb_config.time_on_ms = 100;
 			fb_config.time_off_ms = 100;
@@ -316,7 +318,7 @@ static void on_connection_success(void)
 			//User feedback : 1 long light pulse
 			user_feedback_config_t fb_config;
 			fb_config.mode = USER_FB_PULSE;
-			fb_config.intensity = 127;
+			fb_config.intensity = PWM_MAX_VALUE/2;
 			fb_config.num_pulses = 1;
 			fb_config.time_on_ms = 1500;
 			fb_config.time_off_ms = 100;
@@ -496,7 +498,7 @@ static void pwm_init(void)
 {
 	nrf_pwm_config_t pwm_config = PWM_DEFAULT_CONFIG;
 	
-	pwm_config.mode = PWM_MODE_LED_255;
+	pwm_config.mode = PWM_MODE_LED_4095;
 	pwm_config.num_channels = 1;
 	pwm_config.gpio_num[0] = WLED_PIN;
 	pwm_config.ppi_channel[0] = 1; //TWI uses channel 0
@@ -507,9 +509,9 @@ static void pwm_init(void)
 
 /**@brief Function for updating the intensity of the white LED
  * 
- * @param[in] new_value: the new 8-bit value to pass to the PWM module
+ * @param[in] new_value: the new intensity value to pass to the PWM module
  */
-static void wled_intensity_update(uint8_t new_value)
+static void wled_intensity_update(uint32_t new_value)
 {
 	nrf_pwm_set_value(0, new_value); // channel 0 for the PWM module
 }
@@ -905,7 +907,7 @@ static void advertising_init(void)
  */
 static void wled_handler(ble_bls_t *p_bls, uint8_t new_value)
 {
-	wled_intensity_update(new_value);
+	wled_intensity_update((uint32_t)new_value*(PWM_MAX_VALUE/255));
 }
 
 /**@brief Function for handling new values received by BLE for the IR LEDs state
@@ -1269,7 +1271,7 @@ int main(void)
 	//Boot feedback
 	user_feedback_config_t fb_config;
 	fb_config.mode = USER_FB_PULSE;
-	fb_config.intensity = 255;
+	fb_config.intensity = PWM_MAX_VALUE;
 	fb_config.num_pulses = 1;
 	fb_config.time_on_ms = 100;
 	fb_config.time_off_ms = 0;

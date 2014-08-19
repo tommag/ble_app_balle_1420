@@ -52,6 +52,10 @@ uint32_t nrf_pwm_init(nrf_pwm_config_t *config)
             PWM_TIMER->PRESCALER = 6;
             pwm_max_value = 1000;
             break;
+		case PWM_MODE_LED_4095:  // 0-4095 resolution, 488Hz PWM frequency, 2MHz timer frequency (prescaler 3)
+            PWM_TIMER->PRESCALER = 3;
+            pwm_max_value = 4095;
+            break;
         case PWM_MODE_MTR_100:   // 0-100 resolution, 20kHz PWM frequency, 2MHz timer frequency (prescaler 3)
             PWM_TIMER->PRESCALER = 3;
             pwm_max_value = 100;

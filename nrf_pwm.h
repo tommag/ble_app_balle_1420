@@ -26,7 +26,8 @@ typedef enum
 {
     PWM_MODE_LED_100,   // 0-100 resolution, 156Hz PWM frequency, 32kHz timer frequency (prescaler 9)
     PWM_MODE_LED_255,   // 8-bit resolution, 122Hz PWM frequency, 32kHz timer frequency (prescaler 9)
-    PWM_MODE_LED_1000,  // 0-1000 resolution, 125Hz PWM frequency, 250kHz timer frequency (prescaler 6)
+    PWM_MODE_LED_1000,  // 0-1000 resolution, 250Hz PWM frequency, 250kHz timer frequency (prescaler 6)
+    PWM_MODE_LED_4095,  // 0-4095 resolution, 488Hz PWM frequency, 2MHz timer frequency (prescaler 3)
     
     PWM_MODE_MTR_100,   // 0-100 resolution, 20kHz PWM frequency, 2MHz timer frequency (prescaler 3)
     PWM_MODE_MTR_255,   // 8-bit resolution, 31kHz PWM frequency, 8MHz timer frequency (prescaler 1)
