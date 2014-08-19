@@ -16,8 +16,9 @@
  
 #include "led_user_feedback.h"
 
-const uint8_t heartbeat_states[USER_FB_HEARTBEAT_NB_STATES] =
-	{0,1,2,4,6,8,11,16,21,28,38,51,67,80,90,97,100,97,90,80,67,51,38,28,21,16,11,8,6,4,2,1}; //Values in percentage of the max. intensity
+const uint16_t heartbeat_states[USER_FB_HEARTBEAT_NB_STATES] =
+	{0,8,18,30,50,75,100,130,170,215,260,315,380,450,530,610,700,800,900,960,990,1000,
+		990,960,900,800,700,610,530,450,380,315,260,215,170,130,100,75,50,30,18,8}; //Values in 1/1000 of the max. intensity
 
 user_feedback_config_t feedback_last_config; //Last config set up
 bool feedback_on; //True if the feedback is running
@@ -114,7 +115,7 @@ uint16_t user_feedback_timer_handler(void)
 			feedback_current_state = 0;
 		
 		//Values in the state array are in percentage of the max. intensity
-		pwm_callback((heartbeat_states[feedback_current_state] * feedback_last_config.intensity) / 100); 
+		pwm_callback((heartbeat_states[feedback_current_state] * feedback_last_config.intensity) / 1000); 
 		
 		//return the time before next event, which is the period divided by the number of states
 		return_time = feedback_last_config.time_on_ms / USER_FB_HEARTBEAT_NB_STATES;

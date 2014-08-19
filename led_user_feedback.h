@@ -15,7 +15,7 @@
 #include <stdbool.h>
 
 //The number of different states to use in the HEARTBEAT pattern
-#define USER_FB_HEARTBEAT_NB_STATES		32
+#define USER_FB_HEARTBEAT_NB_STATES		42
 
 typedef enum
 {
@@ -29,12 +29,12 @@ typedef struct
 	user_feedback_mode_t	mode;			//Feedback mode to apply
 	uint16_t				time_on_ms;		//For PULSE : duration of the ON state, for HEARTBEAT : period
 	uint16_t				time_off_ms;	//For PULSE : duration of the OFF state
-	uint8_t					intensity;		//Max. intensity of the LED
+	uint32_t				intensity;		//Max. intensity of the LED
 	uint8_t					num_pulses;		//Number of pulses to display (for PULSE)
 } user_feedback_config_t;
 
 //PWM value update function type
-typedef void (*user_feedback_pwm_update_callback_t)(uint8_t value);
+typedef void (*user_feedback_pwm_update_callback_t)(uint32_t value);
 
 //Init the user feedback by providing the PWM callback function
 void user_feedback_init(user_feedback_pwm_update_callback_t callback);
