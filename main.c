@@ -95,8 +95,8 @@ void pstorage_sys_event_handler (uint32_t p_evt);
 //Example with 3 : new_voltage = new_meas/3 + old_voltage*2/3
 #define BATT_MEAS_INTERVAL_MS				125		//The interval between two measurements (to set up the application timer)			
 // 8Hz (125ms) is the highest frequency recommanded for this configuration (see adc_read_batt_voltage_mv function)
-#define BATT_NOTIFICATION_INTERVAL_MIN_MS	4500	//The battery service will send notifications at non-periodic intervals. This is the lower boundary.
-#define BATT_NOTIFICATION_INTERVAL_MAX_MS	5500	//The battery service will send notifications at non-periodic intervals. This is the upper boundary.
+#define BATT_NOTIFICATION_INTERVAL_MIN_MS	58000	//The battery service will send notifications at non-periodic intervals. This is the lower boundary.
+#define BATT_NOTIFICATION_INTERVAL_MAX_MS	62000	//The battery service will send notifications at non-periodic intervals. This is the upper boundary.
 
 uint32_t m_batt_current_voltage_mv = 0;		//The current, smoothed out, battery voltage
 uint32_t m_batt_percentage;					//The current battery percentage calculated from voltage
