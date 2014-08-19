@@ -118,8 +118,9 @@ app_timer_id_t m_led_feedback_timer_id;		//The app. timer ID that will call the 
 
 //Activity timeout timer
 //TODO #define ACTIVITY_TIMEOUT_S				3600	//Power down the device after 1 hour spent in STANDBY mode
-#define ACTIVITY_TIMEOUT_S				10	//Power down the device after 1 hour spent in STANDBY mode
+#define ACTIVITY_TIMEOUT_S				10	//Power down the device after 10s spent in STANDBY mode
 app_timer_id_t m_activity_timer_id;				//The app. timer ID that will power down the device after too much time spent in STANDBY state
+bool power_down_requested = false;				//The system can't go in power down mode if the battery is charging ; this variable allows to power down as soon as the charge is finished.
 
 //States for the state machine
 typedef enum
@@ -176,6 +177,14 @@ static void action_enter_standby(void)
  */
 static void action_enter_power_down(void)
 {
+	/* If the battery is currently charging the system won't go to power down but restart instead.
+	 * This function will be called again when the charge is finished. */
+	if(!nrf_gpio_pin_read(CHRG_STAT_PIN)) // charger status pin LOW
+	{
+		power_down_requested = true;
+		return;
+	}
+		
 	//TODO have a look at the GPIOTE module drawing 1mA
 	
 	debug_log("[APPL]: Low battery / no activity, powering down \r\n");
@@ -221,6 +230,7 @@ static void on_accelerometer_event(void)
 		
 			//Stop activity timer
 			app_timer_stop(m_activity_timer_id);
+			power_down_requested = false;
 	
 			//Start advertising
 			advertising_start();
@@ -385,8 +395,11 @@ static void activity_timer_handler(void)
  */
 static void on_battery_charge_stop(void * p_event_data, uint16_t event_size)
 {
-	//Do nothing
 	debug_log("[APPL]: Battery charge stop \r\n");
+	
+	//If a power down has been requested during the charge (no activity), process it now
+	if(power_down_requested)
+		action_enter_power_down();
 }
 
 /**@brief Function called when the battery charge starts
