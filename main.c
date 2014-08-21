@@ -195,7 +195,7 @@ static void action_enter_power_down(void)
 	
 	//Turn off both LEDs
 	nrf_gpio_pin_clear(IRLED_PIN);
-	wled_intensity_update(0);
+	nrf_pwm_set_enabled(false);
 	
 	// Configure battery charge IC with sense level low as wakeup source.
 	nrf_gpio_cfg_sense_input(CHRG_STAT_PIN,
