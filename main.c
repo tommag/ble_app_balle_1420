@@ -47,7 +47,7 @@
 #define DEVICE_NAME                     "Balle 14:20 v1"                           /**< Name of device. Will be included in the advertising data. */
 
 #define APP_ADV_INTERVAL                MSEC_TO_UNITS(40, UNIT_0_625_MS)            /**< The advertising interval (in units of 0.625 ms) Min 20 ms. */
-#define APP_ADV_TIMEOUT_IN_SECONDS      180                                         /**< The advertising timeout (in units of seconds). */
+#define APP_ADV_TIMEOUT_IN_SECONDS      60                                         /**< The advertising timeout (in units of seconds). */
 
 #define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
 #define APP_TIMER_MAX_TIMERS            6                                           /**< Maximum number of simultaneously created timers. */
