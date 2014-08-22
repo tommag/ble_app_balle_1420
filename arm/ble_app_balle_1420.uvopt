@@ -562,10 +562,10 @@
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <Focus>0</Focus>
-      <ColumnNumber>17</ColumnNumber>
+      <ColumnNumber>41</ColumnNumber>
       <tvExpOptDlg>0</tvExpOptDlg>
-      <TopLine>372</TopLine>
-      <CurrentLine>1087</CurrentLine>
+      <TopLine>46</TopLine>
+      <CurrentLine>50</CurrentLine>
       <bDave2>0</bDave2>
       <PathWithFileName>.\..\main.c</PathWithFileName>
       <FilenameWithoutPath>main.c</FilenameWithoutPath>
@@ -818,10 +818,10 @@
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <Focus>0</Focus>
-      <ColumnNumber>20</ColumnNumber>
+      <ColumnNumber>0</ColumnNumber>
       <tvExpOptDlg>0</tvExpOptDlg>
-      <TopLine>148</TopLine>
-      <CurrentLine>16</CurrentLine>
+      <TopLine>118</TopLine>
+      <CurrentLine>119</CurrentLine>
       <bDave2>0</bDave2>
       <PathWithFileName>..\nrf_pwm.c</PathWithFileName>
       <FilenameWithoutPath>nrf_pwm.c</FilenameWithoutPath>
@@ -882,10 +882,10 @@
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <Focus>0</Focus>
-      <ColumnNumber>4</ColumnNumber>
+      <ColumnNumber>0</ColumnNumber>
       <tvExpOptDlg>0</tvExpOptDlg>
-      <TopLine>4</TopLine>
-      <CurrentLine>13</CurrentLine>
+      <TopLine>23</TopLine>
+      <CurrentLine>32</CurrentLine>
       <bDave2>0</bDave2>
       <PathWithFileName>..\mma8652\mma8652.c</PathWithFileName>
       <FilenameWithoutPath>mma8652.c</FilenameWithoutPath>
@@ -900,8 +900,8 @@
       <Focus>0</Focus>
       <ColumnNumber>0</ColumnNumber>
       <tvExpOptDlg>0</tvExpOptDlg>
-      <TopLine>1</TopLine>
-      <CurrentLine>1</CurrentLine>
+      <TopLine>27</TopLine>
+      <CurrentLine>38</CurrentLine>
       <bDave2>0</bDave2>
       <PathWithFileName>..\mma8652\mma8652_i2c_wrapper_nrf51822.c</PathWithFileName>
       <FilenameWithoutPath>mma8652_i2c_wrapper_nrf51822.c</FilenameWithoutPath>
@@ -914,10 +914,10 @@
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <Focus>0</Focus>
-      <ColumnNumber>15</ColumnNumber>
+      <ColumnNumber>17</ColumnNumber>
       <tvExpOptDlg>0</tvExpOptDlg>
-      <TopLine>16</TopLine>
-      <CurrentLine>17</CurrentLine>
+      <TopLine>100</TopLine>
+      <CurrentLine>115</CurrentLine>
       <bDave2>0</bDave2>
       <PathWithFileName>..\led_user_feedback.c</PathWithFileName>
       <FilenameWithoutPath>led_user_feedback.c</FilenameWithoutPath>
@@ -930,10 +930,10 @@
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <Focus>0</Focus>
-      <ColumnNumber>5</ColumnNumber>
+      <ColumnNumber>0</ColumnNumber>
       <tvExpOptDlg>0</tvExpOptDlg>
-      <TopLine>4</TopLine>
-      <CurrentLine>13</CurrentLine>
+      <TopLine>235</TopLine>
+      <CurrentLine>241</CurrentLine>
       <bDave2>0</bDave2>
       <PathWithFileName>..\twi_hw_master.c</PathWithFileName>
       <FilenameWithoutPath>twi_hw_master.c</FilenameWithoutPath>

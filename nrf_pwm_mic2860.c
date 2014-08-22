@@ -1,3 +1,15 @@
+/* Tom Magnier - 08/2014
+ * This is a modification of the nRF PWM library to accomodate some of the MIC2860
+ * LED driver limitations.
+ * With a standard PWM, low duty cycles don't let the driver startup because there
+ * is a 32us time between Shutdown and On states. Once the driver has started, it goes
+ * into Standby state for 4ms when turned off and the Standby->On transition is much 
+ * faster. Thus, low duty cycles are possible when the LED is already on but not when 
+ * it is off. 
+ *
+ * This library tries to solve this problem by allowing the first PWM burst to be longer
+ */
+
 #include "nrf_pwm.h"
 #include "nrf.h"
 #include "nrf_gpiote.h"
@@ -10,6 +22,9 @@
 static uint32_t pwm_max_value, pwm_next_value[PWM_MAX_CHANNELS], pwm_next_max_value, pwm_io_ch[PWM_MAX_CHANNELS], pwm_running[PWM_MAX_CHANNELS];
 static uint8_t pwm_gpiote_channel[3];
 static uint32_t pwm_num_channels;
+
+/* Minimum number of ticks on the first PWM cycle (LED driver startup) */
+#define MIC2860_STARTUP_NB_TICKS			128		/* 32us @ 4MHz timer frequency */
 
 void ppi_enable_channel(uint32_t ch_num, volatile uint32_t *event_ptr, volatile uint32_t *task_ptr)
 {
@@ -40,33 +55,9 @@ uint32_t nrf_pwm_init(nrf_pwm_config_t *config)
     
     switch(config->mode)
     {
-        case PWM_MODE_LED_100:   // 0-100 resolution, 321Hz PWM frequency, 32kHz timer frequency (prescaler 9)
-            PWM_TIMER->PRESCALER = 9; 
-            pwm_max_value = 100;
-            break;
-        case PWM_MODE_LED_255:   // 8-bit resolution, 122Hz PWM frequency, 32kHz timer frequency (prescaler 9)
-            PWM_TIMER->PRESCALER = 9;
-            pwm_max_value = 255;        
-            break;
-        case PWM_MODE_LED_1000:  // 0-1000 resolution, 250Hz PWM frequency, 250kHz timer frequency (prescaler 6)
-            PWM_TIMER->PRESCALER = 6;
-            pwm_max_value = 1000;
-            break;
-		case PWM_MODE_LED_4095:  // 0-4095 resolution, 488Hz PWM frequency, 2MHz timer frequency (prescaler 3)
-            PWM_TIMER->PRESCALER = 3;
+ 		case PWM_MODE_LED_4095:  // 0-4095 resolution, 488Hz PWM frequency, 2MHz timer frequency (prescaler 3)
+            PWM_TIMER->PRESCALER = 2;
             pwm_max_value = 4095;
-            break;
-        case PWM_MODE_MTR_100:   // 0-100 resolution, 20kHz PWM frequency, 2MHz timer frequency (prescaler 3)
-            PWM_TIMER->PRESCALER = 3;
-            pwm_max_value = 100;
-            break;
-        case PWM_MODE_MTR_255:    // 8-bit resolution, 31kHz PWM frequency, 8MHz timer frequency (prescaler 1)	
-            PWM_TIMER->PRESCALER = 1;
-            pwm_max_value = 255;
-            break;
-        case PWM_MODE_BUZZER_64:  // 6-bit resolution, 250kHz PWM frequency, 16MHz timer frequency (prescaler 0)
-            PWM_TIMER->PRESCALER = 0;
-            pwm_max_value = 64;
             break;
         default:
             return 0xFFFFFFFF;
@@ -156,6 +147,8 @@ void PWM_IRQHandler(void)
     PWM_TIMER->EVENTS_COMPARE[3] = 0;
     PWM_TIMER->INTENCLR = 0xFFFFFFFF;
     PWM_TIMER->CC[3] = pwm_max_value = pwm_next_max_value;
+	PWM_TIMER->SHORTS = TIMER_SHORTS_COMPARE3_CLEAR_Msk;
+
     for(i = 0; i < pwm_num_channels; i++)
     {
         if(pwm_next_value[i] == 0)
@@ -177,9 +170,16 @@ void PWM_IRQHandler(void)
             {
                 nrf_gpiote_task_config(pwm_gpiote_channel[i], pwm_io_ch[i], NRF_GPIOTE_POLARITY_TOGGLE, NRF_GPIOTE_INITIAL_VALUE_HIGH);  
                 pwm_running[i] = 1;
+				
+				/* Startup => allow more time to the LED driver if necessary */
+				if(pwm_next_value[i] < MIC2860_STARTUP_NB_TICKS) 
+				{
+					PWM_TIMER->CC[i] = MIC2860_STARTUP_NB_TICKS;
+					PWM_TIMER->INTENSET = TIMER_INTENSET_COMPARE3_Msk;
+					PWM_TIMER->SHORTS |= TIMER_SHORTS_COMPARE3_STOP_Msk;
+				}
             }
         }
     }
-    PWM_TIMER->SHORTS = TIMER_SHORTS_COMPARE3_CLEAR_Msk;
     PWM_TIMER->TASKS_START = 1;
 }
