@@ -14,8 +14,8 @@
  *
  * @brief Ball Lighting Service module.
  *
- * @details This module implements the Ball Lighting custom Service. 
- * It contains two characteristics : 
+ * @details This module implements the Ball Lighting custom Service.
+ * It contains two characteristics :
  * *White LED intensity (between 0 and 255), written by the GATT client (master device)
  * *IR LED state (on or off), written by the GATT client
  *
@@ -32,12 +32,12 @@
 #include "ble_srv_common.h"
 
 //UUID management for custom service
-#define BLS_UUID_BASE {0xA2, 0xCD, 0x1E, 0x3E, 0x05, 0x95, 0x81, 0xD1, 0xED, 0x71, 0xCA, 0x6F, 0x00, 0x00, 0xA9, 0x39}
+#define BLS_UUID_BASE {{0xA2, 0xCD, 0x1E, 0x3E, 0x05, 0x95, 0x81, 0xD1, 0xED, 0x71, 0xCA, 0x6F, 0x00, 0x00, 0xA9, 0x39}}
 #define BLS_UUID_SERVICE 0x1523
 #define BLS_UUID_WLED_CHAR 0x1525
 #define BLS_UUID_IRLED_CHAR 0x1524
 
-// Forward declaration of the ble_bls_t type. 
+// Forward declaration of the ble_bls_t type.
 typedef struct ble_bls_s ble_bls_t;
 
 /**@brief Ball Lighting Service event handler type. */

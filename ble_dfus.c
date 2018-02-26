@@ -89,7 +89,7 @@ static uint32_t trigger_char_add(ble_dfus_t * p_dfus, const ble_dfus_init_t * p_
 
     char_md.char_props.read   = 1;
     char_md.char_props.write  = 1;
-    char_md.p_char_user_desc  = "DFU Trigger";
+    char_md.p_char_user_desc  = (uint8_t*)"DFU Trigger";
     char_md.char_user_desc_max_size = 16;
     char_md.char_user_desc_size = 11;
     char_md.p_char_pf         = NULL;

@@ -27,7 +27,7 @@
 #include "ble_srv_common.h"
 #include "ble_advdata.h"
 #include "ble_conn_params.h"
-#include "board_balle_1420_v1.h"
+#include "custom_board.h"
 #include "app_scheduler.h"
 #include "softdevice_handler.h"
 #include "app_timer.h"
@@ -39,7 +39,7 @@
 #include "ble_bas.h" //Battery service
 #include "ble_dfus.h" //DFU trigger service
 #include "nrf_pwm.h"
-#include "debug.h"
+#include "app_trace.h"
 #include "nrf_delay.h"
 #include "mma8652/mma8652.h"
 #include "led_user_feedback.h"
@@ -93,7 +93,7 @@ void pstorage_sys_event_handler (uint32_t p_evt);
 #define	BATT_MIN_VOLTAGE_MV					3000	//The minimum battery voltage in mV, used for % calculation and low battery action
 #define BATT_MEAS_AVG_FACTOR				3		//The inverse of the weight to use for the running average smoothing of the read value
 //Example with 3 : new_voltage = new_meas/3 + old_voltage*2/3
-#define BATT_MEAS_INTERVAL_MS				125		//The interval between two measurements (to set up the application timer)			
+#define BATT_MEAS_INTERVAL_MS				125		//The interval between two measurements (to set up the application timer)
 // 8Hz (125ms) is the highest frequency recommanded for this configuration (see adc_read_batt_voltage_mv function)
 #define BATT_NOTIFICATION_INTERVAL_MIN_MS	58000	//The battery service will send notifications at non-periodic intervals. This is the lower boundary.
 #define BATT_NOTIFICATION_INTERVAL_MAX_MS	62000	//The battery service will send notifications at non-periodic intervals. This is the upper boundary.
@@ -163,7 +163,7 @@ static void action_enter_standby(void)
 	m_current_state = STATE_STANDBY;
 	//TODO energy optimizations ? slow down ADC interrupt ?
 	//TODO accelerometer setup ?
-	
+
 	//Start activity timer
 	app_timer_start(m_activity_timer_id, APP_TIMER_TICKS(ACTIVITY_TIMEOUT_S*1000, APP_TIMER_PRESCALER), NULL);
 }
@@ -172,7 +172,7 @@ static void action_enter_standby(void)
  * Turn down all peripherals
  * Setup wakeup source
  * Enter power-down
- * 
+ *
  * When woken up from power down, the CPU will reset
  */
 static void action_enter_power_down(void)
@@ -184,29 +184,29 @@ static void action_enter_power_down(void)
 		power_down_requested = true;
 		return;
 	}
-		
+
 	//TODO have a look at the GPIOTE module drawing 1mA
-	
-	debug_log("[APPL]: Low battery / no activity, powering down \r\n");
-	
+
+	app_trace_log("[APPL]: Low battery / no activity, powering down \r\n");
+
 	//Turn off accelerometer
 	bool success = mma8652_standby();
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	//Turn off both LEDs
 	nrf_gpio_pin_clear(IRLED_PIN);
 	nrf_pwm_set_enabled(false);
-	
+
 	// Configure battery charge IC with sense level low as wakeup source.
 	nrf_gpio_cfg_sense_input(CHRG_STAT_PIN,
 							 NRF_GPIO_PIN_PULLUP,
 							 NRF_GPIO_PIN_SENSE_LOW);
-	
-	// Go to system-off mode (this function will not return; wakeup will cause a reset)                
+
+	// Go to system-off mode (this function will not return; wakeup will cause a reset)
 	sd_power_system_off();
 }
 
-/* Actions to do when entering the ACTIVE state 
+/* Actions to do when entering the ACTIVE state
  */
 static void action_enter_active(void)
 {
@@ -220,18 +220,18 @@ static void on_accelerometer_event(void)
 	{
 		case STATE_STANDBY:
 			m_current_state = STATE_FIRST_CONN_ATT;
-			
+
 			//Start user feedback (slow heartbeat)
 			user_feedback_config_t fb_config;
 			fb_config.mode = USER_FB_HEARTBEAT;
 			fb_config.intensity = (PWM_MAX_VALUE/4);
 			fb_config.time_on_ms = 3000;
 			led_feedback_start(&fb_config);
-		
+
 			//Stop activity timer
 			app_timer_stop(m_activity_timer_id);
 			power_down_requested = false;
-	
+
 			//Start advertising
 			advertising_start();
 			break;
@@ -292,7 +292,7 @@ static void on_activity_timeout(void)
 			break;
 		default:
 			break;
-	}	
+	}
 }
 
 /* Handling of the ON_DISCONNECT_RQ event */
@@ -369,14 +369,14 @@ static void on_app_event(app_state_events_t event)
 		case ON_LOW_BATT: on_low_batt(); break;
 		default: break;
 	}
-	
-	debug_log("[APPL]: Event 0x%02x occurred, new state : 0x%02x \r\n", event, m_current_state);
+
+	app_trace_log("[APPL]: Event 0x%02x occurred, new state : 0x%02x \r\n", event, m_current_state);
 }
 
 /**@brief Function called when an interrupt is sent by the accelerometer via the Scheduler
- * 
+ *
  * @details Assert the interrupt then call the related application event
- * 
+ *
  * @param[in] int_num  Interrupt line asserted (1 or 2)
  */
 static void on_accelerometer_interrupt(void * p_event_data, uint16_t event_size)
@@ -384,9 +384,9 @@ static void on_accelerometer_interrupt(void * p_event_data, uint16_t event_size)
 	on_app_event(ON_ACCELEROMETER_EVENT);
 }
 
-/**@brief Funtion called when the activity timer expires (too much time spent in STANDBY mode). 
+/**@brief Funtion called when the activity timer expires (too much time spent in STANDBY mode).
  */
-static void activity_timer_handler(void)
+static void activity_timer_handler(void *p_context)
 {
 	on_app_event(ON_ACTIVITY_TIMEOUT);
 }
@@ -395,8 +395,8 @@ static void activity_timer_handler(void)
  */
 static void on_battery_charge_stop(void * p_event_data, uint16_t event_size)
 {
-	debug_log("[APPL]: Battery charge stop \r\n");
-	
+	app_trace_log("[APPL]: Battery charge stop \r\n");
+
 	//If a power down has been requested during the charge (no activity), process it now
 	if(power_down_requested)
 		action_enter_power_down();
@@ -407,7 +407,7 @@ static void on_battery_charge_stop(void * p_event_data, uint16_t event_size)
 static void on_battery_charge_start(void * p_event_data, uint16_t event_size)
 {
 	//Do nothing
-	debug_log("[APPL]: Battery charge start \r\n");
+	app_trace_log("[APPL]: Battery charge start \r\n");
 }
 
 /**@brief Function for error handling, which is called when an error has occurred.
@@ -429,9 +429,9 @@ void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p
     //                any communication.
     //                Use with care. Un-comment the line below to use.
     //ble_debug_assert_handler(error_code, line_num, p_file_name);
-	
-	debug_log("[APPL]: ASSERT: %s, %d, error 0x%08x\r\n", p_file_name, line_num, error_code);
-	
+
+	app_trace_log("[APPL]: ASSERT: %s, %lu, error 0x%08lx\r\n", p_file_name, line_num, error_code);
+
 	nrf_delay_ms(10000); //TODO !
 
     // On assert, the system can only recover with a reset.
@@ -466,20 +466,20 @@ void gpiote_event_handler(uint32_t event_pins_lo_to_hi, uint32_t event_pins_hi_t
 	uint32_t int_num = 0;
 	if(event_pins_hi_to_lo & (1UL << ACC_INT1_PIN))
 	{
-		int_num = 1; 
+		int_num = 1;
 		app_sched_event_put(&int_num, sizeof(int_num), on_accelerometer_interrupt);
 	}
-	
+
 	if(event_pins_hi_to_lo & (1UL << ACC_INT2_PIN))
 	{
-		int_num = 2; 
+		int_num = 2;
 		app_sched_event_put(&int_num, sizeof(int_num), on_accelerometer_interrupt);
 	}
-	
+
 	//if charger status line transitioned from low to high call the "charger disconnected" handler
 	if(event_pins_lo_to_hi & (1UL << CHRG_STAT_PIN))
 		app_sched_event_put(NULL, 0, on_battery_charge_stop);
-	
+
 	//else call the "charger connected" handler
 	if(event_pins_hi_to_lo & (1UL << CHRG_STAT_PIN))
 		app_sched_event_put(NULL, 0, on_battery_charge_start);
@@ -493,12 +493,12 @@ static void pins_init(void)
 {
 	//Init IR LED output
 	nrf_gpio_cfg_output(IRLED_PIN); //simple output
-	
+
 	//Init accelerometer interrupt inputs with no pull resistor
 	//The GPIOTE handling library takes care of defining the SENSE fields
 	nrf_gpio_cfg_sense_input(ACC_INT1_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
 	nrf_gpio_cfg_sense_input(ACC_INT2_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_NOSENSE);
-	
+
 	//Init battery charger status input with pull up resistor
 	nrf_gpio_cfg_sense_input(CHRG_STAT_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_NOSENSE);
 }
@@ -510,18 +510,18 @@ static void pins_init(void)
 static void pwm_init(void)
 {
 	nrf_pwm_config_t pwm_config = PWM_DEFAULT_CONFIG;
-	
+
 	pwm_config.mode = PWM_MODE_LED_4095;
 	pwm_config.num_channels = 1;
 	pwm_config.gpio_num[0] = WLED_PIN;
 	pwm_config.ppi_channel[0] = 1; //TWI uses channel 0
 	pwm_config.ppi_channel[1] = 2;
-	
+
 	nrf_pwm_init(&pwm_config);
 }
 
 /**@brief Function for updating the intensity of the white LED
- * 
+ *
  * @param[in] new_value: the new intensity value to pass to the PWM module
  */
 static void wled_intensity_update(uint32_t new_value)
@@ -532,26 +532,26 @@ static void wled_intensity_update(uint32_t new_value)
 /**@brief Function that generates an interval for the BAS notification using the RNG
  * Generate and return an interval in ms between BATT_NOTIFICATION_INTERVAL_MIN_MS and BATT_NOTIFICATION_INTERVAL_MAX_MS,
  * using the Random Number Generator module (via the SoftDevice)
- * 
+ *
  * @return an randomly generated interval in ms, between the set boundaries
  */
 static uint32_t batt_srv_generate_interval(void)
 {
 	uint8_t random_number, num_bytes_avail;
-	
+
 	//Wait for available random number
-	do 
+	do
 		sd_rand_application_bytes_available_get(&num_bytes_avail);
 	while(num_bytes_avail == 0);
-		
-	
+
+
 	uint32_t err_code = sd_rand_application_vector_get(&random_number, 1);
 	APP_ERROR_CHECK(err_code);
-	
+
 	uint32_t interval_ms = BATT_NOTIFICATION_INTERVAL_MIN_MS + (random_number * (BATT_NOTIFICATION_INTERVAL_MAX_MS - BATT_NOTIFICATION_INTERVAL_MIN_MS)) / 255; //RNG returns a 8-bit random number
-	
-	//debug_log("[APPL]: Random interval generated : %u \r\n", interval_ms);
-	
+
+	//app_trace_log("[APPL]: Random interval generated : %u \r\n", interval_ms);
+
 	return interval_ms;
 }
 
@@ -561,20 +561,20 @@ static uint32_t batt_srv_generate_interval(void)
  * BATT_NOTIFICATION_INTERVAL_MIN_MS and BATT_NOTIFICATION_INTERVAL_MAX_MS. This is to avoid patterns
  * when a high number of balls are being managed by the same Master : battery notifications will happen at random times.
  *
- * This function takes the latest calculated battery percentage and passes it to the Battery service, 
+ * This function takes the latest calculated battery percentage and passes it to the Battery service,
  * then set up the timer for the next notification
  */
-static void batt_srv_timer_handler(void)
+static void batt_srv_timer_handler(void *p_context)
 {
 	uint32_t err_code;
-	
+
 	//Update BAS battery level if a valid connection is established
 	if(m_bas.conn_handle != BLE_CONN_HANDLE_INVALID && m_bas.is_notification_supported)
 	{
 		err_code = ble_bas_battery_level_update(&m_bas, m_batt_percentage); //will return NRF_ERROR_INVALID_STATE if not connected
 		//APP_ERROR_CHECK(err_code); //disabled because fire a NRF_ERROR_INVALID_STATE if client hasn't enabled notifications
 	}
-	
+
 	//Setup new timer
 	err_code = app_timer_start(m_batt_srv_timer_id, APP_TIMER_TICKS(batt_srv_generate_interval(), APP_TIMER_PRESCALER) , NULL);
 	APP_ERROR_CHECK(err_code);
@@ -582,21 +582,21 @@ static void batt_srv_timer_handler(void)
 
 
 /**@brief Function for reading the battery voltage, using the last ADC measurement
- * 
+ *
  * @return The measured value in mV
  */
 static uint32_t adc_read_batt_voltage_mv(void)
 {
 	//ADC configuration : reference = 1200 mV band gap, no input prescaling
-	//Battery voltage is measured through a 2.2M/10M voltage divider so we have to 
+	//Battery voltage is measured through a 2.2M/10M voltage divider so we have to
 	//multiply the read value by (10M+2.2M)/2.2M = 61/11
-	
+
 	//Read ADC measurement
 	uint32_t value = NRF_ADC->RESULT;
-	
+
 	//The measurement has to be * (61/11) (voltage divider) and * 1200/1023 (ADC reference/resolution)
 	value = ((value*61*1200)/11)/1023;
-	
+
 	return value;
 }
 
@@ -604,49 +604,49 @@ static uint32_t adc_read_batt_voltage_mv(void)
 /**@brief Function for handling the battery voltage measurement
  * This function is called by the ADC IRQ handler at the end of a conversion
  * which must be started by adc_start();
- * 
+ *
  * This function takes care of smoothing the variations of the voltage. It stores
  * the new voltage in the global variable m_batt_current_voltage_mv and calculates
  * the battery percentage, stored in m_batt_percentage.
  *
  * This function also takes care of calling the low battery routines.
  */
-static void adc_process_new_measurement(void)
+static void adc_process_new_measurement(void *p_event_data, uint16_t event_size)
 {
 	//Retrieve the latest measurement and convert it to mV
 	uint32_t new_meas = adc_read_batt_voltage_mv();
-	
+
 	//Calculate the current voltage based on the previous ones and the new measurement
 	//We use a running average of factor 1/BATT_MEAS_AVG_FACTOR
-	m_batt_current_voltage_mv = new_meas/BATT_MEAS_AVG_FACTOR + 
+	m_batt_current_voltage_mv = new_meas/BATT_MEAS_AVG_FACTOR +
 		m_batt_current_voltage_mv*(BATT_MEAS_AVG_FACTOR-1)/BATT_MEAS_AVG_FACTOR;
-	
+
 	//Calculate the percentage
 	//At the moment, very simple algorithm assuming that the voltage variation is linear (obviously false)
 	m_batt_percentage = ((m_batt_current_voltage_mv-BATT_MIN_VOLTAGE_MV)*100) / (BATT_MAX_VOLTAGE_MV-BATT_MIN_VOLTAGE_MV);
-	
+
 	//Check that the percentage is between 0 and 100 !
 	if(m_batt_current_voltage_mv < BATT_MIN_VOLTAGE_MV)
 		m_batt_percentage = 0;
 	else if(m_batt_percentage > 100)
 		m_batt_percentage = 100;
-	
+
 	//If the new value is lower than the min allowed voltage and the battery is not charging :
 	//go into power down mode
-	if((m_batt_current_voltage_mv < BATT_MIN_VOLTAGE_MV) && 
+	if((m_batt_current_voltage_mv < BATT_MIN_VOLTAGE_MV) &&
 			(nrf_gpio_pin_read(CHRG_STAT_PIN) == 1))
 	{
 		on_app_event(ON_LOW_BATT);
 	}
-	
-	//debug_log("[APPL]: New battery voltage : %u mV, %u %% \r\n", m_batt_current_voltage_mv, m_batt_percentage);
+
+	//app_trace_log("[APPL]: New battery voltage : %u mV, %u %% \r\n", m_batt_current_voltage_mv, m_batt_percentage);
 }
 
 
-/**@brief Function for triggering an ADC reading 
+/**@brief Function for triggering an ADC reading
  * The result will be processed in the ADC IRQ handler
  */
-static void adc_start(void)
+static void adc_start(void *p_context)
 {
 	NRF_ADC->TASKS_START = 1;
 }
@@ -654,7 +654,7 @@ static void adc_start(void)
 
 /**@brief Function for the ADC block initialization
  * Used to read the battery voltage
- * The analog pin to read from must be defined with : 
+ * The analog pin to read from must be defined with :
  * #define BATT_VOLTAGE_AIN_NO		ADC_CONFIG_PSEL_AnalogInput0
  *
  * This function also initializes the battery voltage global variable (for the future averages)
@@ -662,39 +662,39 @@ static void adc_start(void)
 static void adc_init(void)
 {
 	uint32_t err_code;
-	
+
 	//Recommended configuration found at :
 	//https://devzone.nordicsemi.com/question/990/how-to-measure-lithium-battery-voltage/
 	//10-bit mode, analog input without prescaling, reference : 1.V band gap
 	//analog input : set by define BATT_VOLTAGE_AIN_NO
 	//no external reference
-	
+
 	NRF_ADC->CONFIG = 	(ADC_CONFIG_RES_10bit 						<< ADC_CONFIG_RES_Pos) |
 						(ADC_CONFIG_INPSEL_AnalogInputNoPrescaling	<< ADC_CONFIG_INPSEL_Pos) |
 						(ADC_CONFIG_REFSEL_VBG						<< ADC_CONFIG_REFSEL_Pos) |
 						(BATT_VOLTAGE_AIN_NO						<< ADC_CONFIG_PSEL_Pos) |
-						(ADC_CONFIG_EXTREFSEL_None					<< ADC_CONFIG_EXTREFSEL_Pos); 
+						(ADC_CONFIG_EXTREFSEL_None					<< ADC_CONFIG_EXTREFSEL_Pos);
 
 	//Enable ADC.
 	NRF_ADC->ENABLE = ADC_ENABLE_ENABLE_Enabled;
-	
+
 	//Trigger a new conversion and wait for the result
 	NRF_ADC->EVENTS_END = 0; //Clear the flag
-	adc_start();
-	
+	adc_start(NULL);
+
 	//Wait for the end of the conversion
 	while(!NRF_ADC->EVENTS_END);
-	
+
 	NRF_ADC->EVENTS_END = 0; //Clear the flag
 	//Get the result
 	m_batt_current_voltage_mv = adc_read_batt_voltage_mv(); //Initialize the voltage variable
-	adc_process_new_measurement(); //Initialize the battery percentage before starting the BLE Battery service
-	
+	adc_process_new_measurement(NULL, 0); //Initialize the battery percentage before starting the BLE Battery service
+
 	//Setup ADC interrupt
 	NRF_ADC->INTENSET = ADC_INTENSET_END_Enabled << ADC_INTENSET_END_Pos;
 	err_code = sd_nvic_SetPriority(ADC_IRQn, NRF_APP_PRIORITY_LOW);
 	APP_ERROR_CHECK(err_code);
-	err_code = sd_nvic_EnableIRQ(ADC_IRQn); 
+	err_code = sd_nvic_EnableIRQ(ADC_IRQn);
 	APP_ERROR_CHECK(err_code);
 }
 
@@ -704,7 +704,7 @@ void ADC_IRQHandler(void)
 {
 	//Clear data ready event
 	NRF_ADC->EVENTS_END = 0;
-	
+
 	//Schedule the read_batt_voltage to be processed at the end of the event queue
 	app_sched_event_put(NULL, 0, adc_process_new_measurement);
 }
@@ -713,67 +713,67 @@ void ADC_IRQHandler(void)
  */
 static void accelerometer_init(void)
 {
-	bool success; 
+	bool success;
 	//I2C init
 	success = mma8652_init();
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	/*Only the motion detection functionnality is used so there is no need to change most of the default settings */
-	
+
 	//Setup data rates
-	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG1, 0x00
-		| ACCEL_SLEEP_DATARATE		//SLEEP mode sample frequency 
-		| ACCEL_WAKE_DATARATE);	//WAKE mode sample frequency
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG1, (0x00
+		| ACCEL_SLEEP_DATARATE		//SLEEP mode sample frequency
+		| ACCEL_WAKE_DATARATE));	//WAKE mode sample frequency
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	//Setup auto-sleep and power schemes selection
-	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG2, 0x00
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG2, (0x00
 		| ACCEL_WAKE_POWER_MODE		//WAKE power mode
 		| ACCEL_SLEEP_POWER_MODE	//SLEEP power mode
-		| MMA8652_CTRL_REG2_SLPE); //Auto-SLEEP enable (not very useful if both datarates and power modes are the same in SLEEP and WAKE modes)
+		| MMA8652_CTRL_REG2_SLPE)); //Auto-SLEEP enable (not very useful if both datarates and power modes are the same in SLEEP and WAKE modes)
 	APP_ERROR_CHECK_BOOL(success);
 
 	//Setup wake up interrupts
-	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG3, 0x00
-		& ~MMA8652_CTRL_REG3_PP_OD	//Push pull interrupt outputs
-		& ~MMA8652_CTRL_REG3_IPOL	//Active low interrupt outputs
-		| MMA8652_CTRL_REG3_WAKE_FF_MT);	//Wake up from Freefall/motion detection
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG3, (0x00
+		//& ~MMA8652_CTRL_REG3_PP_OD	//Push pull interrupt outputs
+		//& ~MMA8652_CTRL_REG3_IPOL	//Active low interrupt outputs
+		| MMA8652_CTRL_REG3_WAKE_FF_MT));	//Wake up from Freefall/motion detection
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	//Setup external interrupts
-	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG4, 0x00
-		| MMA8652_CTRL_REG4_INT_EN_FF_MT); //Enable interrupt from freefall/motion detection
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG4, (0x00
+		| MMA8652_CTRL_REG4_INT_EN_FF_MT)); //Enable interrupt from freefall/motion detection
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	//Setup interrupt routing (to interrupt line 1 or 2)
-	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG5, 0x00
-		| MMA8652_CTRL_REG5_INT_CFG_FF_MT); //Route FF/MT int to INT1
+	success = mma8652_i2c_register_write(MMA8652_REG_CTRL_REG5, (0x00
+		| MMA8652_CTRL_REG5_INT_CFG_FF_MT)); //Route FF/MT int to INT1
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	//Setup auto-sleep inactivity timeout
 	success = mma8652_i2c_register_write(MMA8652_REG_ASLP_COUNT,
-		0xFF); //Setup maximum time since auto-sleep is not really used. 
+		0xFF); //Setup maximum time since auto-sleep is not really used.
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	//Setup Freefall/motion detection
-	success = mma8652_i2c_register_write(MMA8652_REG_FF_MT_CFG, 0x00 
-		& ~MMA8652_FF_MT_CFG_ELE	//ELE bit = 0 => interrupt indicate real time status
+	success = mma8652_i2c_register_write(MMA8652_REG_FF_MT_CFG, (0x00
+		//& ~MMA8652_FF_MT_CFG_ELE	//ELE bit = 0 => interrupt indicate real time status
 		| MMA8652_FF_MT_CFG_OAE		//OAE bit = 1 => motion detection
 		| MMA8652_FF_MT_CFG_XEFE	//enable detection on all 3 axis
 		| MMA8652_FF_MT_CFG_YEFE	//enable detection on all 3 axis
-		| MMA8652_FF_MT_CFG_ZEFE);	//enable detection on all 3 axis
+		| MMA8652_FF_MT_CFG_ZEFE));	//enable detection on all 3 axis
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	//Set motion detection threshold
-	success = mma8652_i2c_register_write(MMA8652_REG_FF_MT_THS, 
+	success = mma8652_i2c_register_write(MMA8652_REG_FF_MT_THS,
 		ACCEL_MOTION_THRESHOLD & MMA8652_FF_MT_THS_MSK);
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	//Set motion detection delay
 	success = mma8652_i2c_register_write(MMA8652_REG_FF_MT_COUNT,
 		ACCEL_MOTION_DELAY);
 	APP_ERROR_CHECK_BOOL(success);
-	
+
 	//Enter ACTIVE mode
 	success = mma8652_active();
 	APP_ERROR_CHECK_BOOL(success);
@@ -791,10 +791,10 @@ static void led_feedback_init()
  * called by the application timer
  * Calls the user feedback module handler and starts again the timer if necessary
  */
-static void led_feedback_timer_handler(void)
+static void led_feedback_timer_handler(void *p_context)
 {
 	uint16_t new_time = user_feedback_timer_handler();
-	
+
 	if(new_time != 0)
 	{
 		uint32_t err_code = app_timer_start(m_led_feedback_timer_id, APP_TIMER_TICKS(new_time, APP_TIMER_PRESCALER) , NULL);
@@ -811,7 +811,7 @@ static void led_feedback_timer_handler(void)
 static void led_feedback_start(user_feedback_config_t *p_feedback_config)
 {
 	uint16_t time = user_feedback_start(p_feedback_config);
-	
+
 	if(time != 0)
 	{
 		uint32_t err_code = app_timer_start(m_led_feedback_timer_id, APP_TIMER_TICKS(time, APP_TIMER_PRESCALER) , NULL);
@@ -819,7 +819,7 @@ static void led_feedback_start(user_feedback_config_t *p_feedback_config)
 	}
 }
 
-/**@brief Stop the running user feedback process 
+/**@brief Stop the running user feedback process
  */
 static void led_feedback_stop(void)
 {
@@ -836,19 +836,19 @@ static void timers_init(void)
     APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, true);
 
 	uint32_t err_code;
-	
+
 	//Register the ADC timer
     err_code = app_timer_create(&m_adc_timer_id, APP_TIMER_MODE_REPEATED, adc_start);
     APP_ERROR_CHECK(err_code);
-	
+
 	//Register the battery service notification timer
 	err_code = app_timer_create(&m_batt_srv_timer_id, APP_TIMER_MODE_SINGLE_SHOT, batt_srv_timer_handler);
 	APP_ERROR_CHECK(err_code);
-	
+
 	//Register the LED user feedback timer
 	err_code = app_timer_create(&m_led_feedback_timer_id, APP_TIMER_MODE_SINGLE_SHOT, led_feedback_timer_handler);
 	APP_ERROR_CHECK(err_code);
-	
+
 	//Register the activity timeout timer
 	err_code = app_timer_create(&m_activity_timer_id, APP_TIMER_MODE_SINGLE_SHOT, activity_timer_handler);
 }
@@ -927,10 +927,10 @@ static void wled_handler(ble_bls_t *p_bls, uint8_t new_value)
  */
 static void irled_handler(ble_bls_t *p_bls, uint8_t new_state)
 {
-	nrf_gpio_pin_write(IRLED_PIN, new_state); 
+	nrf_gpio_pin_write(IRLED_PIN, new_state);
 }
 
-/**@brief Function for handling a command received by BLE to trigger DFU mode 
+/**@brief Function for handling a command received by BLE to trigger DFU mode
  * Writes the magic word then restarts the CPU if the value is != 0
  *
  * TODO : security !
@@ -965,17 +965,17 @@ static void services_init(void)
 	BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_char_attr_md.cccd_write_perm); //Allow GATT client to modify CCCD config (to disable notifications ?)
 	BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_char_attr_md.read_perm); //Allow reading on open links
 	BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&bas_init.battery_level_char_attr_md.write_perm); //No writing of the battery level by the client
-	
+
 	BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_report_read_perm); //Allow reading of battery level report char.
-	
+
 	bas_init.evt_handler = NULL;
 	bas_init.initial_batt_level = m_batt_percentage;
 	bas_init.p_report_ref = NULL; //No Report Reference descriptor needed
 	bas_init.support_notification = true;
-	
+
 	err_code = ble_bas_init(&m_bas, &bas_init);
 	APP_ERROR_CHECK(err_code);
-	
+
 	//Add DFU Trigger service
 	dfus_init.dfu_trigger_handler = dfu_trigger_handler;
 	err_code = ble_dfus_init(&m_dfus, &dfus_init);
@@ -1059,14 +1059,14 @@ static void conn_params_init(void)
 static void timers_start(void)
 {
     uint32_t err_code;
-	
+
 	//Start the ADC timer
     err_code = app_timer_start(m_adc_timer_id, APP_TIMER_TICKS(BATT_MEAS_INTERVAL_MS, APP_TIMER_PRESCALER) , NULL);
-    APP_ERROR_CHECK(err_code); 
-	
+    APP_ERROR_CHECK(err_code);
+
 	//Start the BAS notification timer
 	err_code = app_timer_start(m_batt_srv_timer_id, APP_TIMER_TICKS(batt_srv_generate_interval(), APP_TIMER_PRESCALER) , NULL);
-	APP_ERROR_CHECK(err_code); 
+	APP_ERROR_CHECK(err_code);
 }
 
 
@@ -1105,22 +1105,22 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
     {
         case BLE_GAP_EVT_CONNECTED:
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-		
+
 			//Set system attributes upon connection to avoid getting BLE_GATTS_EVT_SYS_ATTR_MISSING error
             err_code = sd_ble_gatts_sys_attr_set(m_conn_handle, NULL, 0);
             APP_ERROR_CHECK(err_code);
-			
+
 			//Call application event
 			on_app_event(ON_CONNECTION_SUCCESS);
-		
+
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
             m_conn_handle = BLE_CONN_HANDLE_INVALID;
-			
+
 			if(p_ble_evt->evt.gap_evt.params.disconnected.reason == BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION)
 				on_app_event(ON_DISCONNECT_RQ);
-			else 
+			else
 				on_app_event(ON_CONNECTION_TIMEOUT); //Handle all failures the same way as a timeout
             break;
 
@@ -1204,10 +1204,16 @@ static void ble_stack_init(void)
     // Initialize the SoftDevice handler module.
     SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_SYNTH_250_PPM, false);
 
+    // Enable BLE stack
+    ble_enable_params_t ble_enable_params;
+    memset(&ble_enable_params, 0, sizeof(ble_enable_params));
+    err_code = sd_ble_enable(&ble_enable_params);
+    APP_ERROR_CHECK(err_code);
+
     // Register with the SoftDevice handler module for BLE events.
     err_code = softdevice_ble_evt_handler_set(ble_evt_dispatch);
     APP_ERROR_CHECK(err_code);
-    
+
     // Register with the SoftDevice handler module for BLE events.
     err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
     APP_ERROR_CHECK(err_code);
@@ -1228,21 +1234,21 @@ static void scheduler_init(void)
 static void gpiote_init(void)
 {
     APP_GPIOTE_INIT(APP_GPIOTE_MAX_USERS);
-	
+
 	//Setup pins and transitions to interrupt from
 	uint32_t err_code;
 	uint32_t hi_to_lo_bitmask = (1UL << ACC_INT1_PIN)
 								| (1UL << ACC_INT2_PIN)
 								| (1UL << CHRG_STAT_PIN); //pins to be notified of transition high -> low
 	uint32_t lo_to_hi_bitmask = (1UL << CHRG_STAT_PIN); //pins to be notified of transition low -> high
-	
+
 	err_code = app_gpiote_user_register(&m_gpiote_user_id,
 								lo_to_hi_bitmask,
 								hi_to_lo_bitmask,
 								gpiote_event_handler);
-	
+
 	APP_ERROR_CHECK(err_code);
-	
+
 	//Enable GPIOTE module
 	err_code = app_gpiote_user_enable(m_gpiote_user_id);
 	APP_ERROR_CHECK(err_code);
@@ -1263,7 +1269,7 @@ static void power_manage(void)
 int main(void)
 {
     // Initialize
-	debug_init();
+	app_trace_init();
     pins_init();
     timers_init();
     gpiote_init();
@@ -1272,15 +1278,15 @@ int main(void)
 	pwm_init(); //must be started AFTER soft device init ! otherwise we can't register IRQs
 	adc_init(); //must be started AFTER soft device init !
 	accelerometer_init(); //must be started AFTER soft device init ! uses PPI functions
-    scheduler_init();    
+    scheduler_init();
     gap_params_init();
     advertising_init();
     services_init();
     conn_params_init();
     sec_params_init();
-	
-	debug_log("[APPL]: Init end \r\n");
-	
+
+	app_trace_log("[APPL]: Init end \r\n");
+
 	//Boot feedback
 	user_feedback_config_t fb_config;
 	fb_config.mode = USER_FB_PULSE;
@@ -1289,7 +1295,7 @@ int main(void)
 	fb_config.time_on_ms = 100;
 	fb_config.time_off_ms = 0;
 	led_feedback_start(&fb_config);
-	
+
     // Start execution
     timers_start();
 	action_enter_standby();

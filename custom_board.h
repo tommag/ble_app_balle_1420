@@ -1,9 +1,9 @@
 /* Header file for board "balle_1420_v1"
- * 
+ *
  * Author : Tom Magnier - Cie 14:20
  * 06/2014
  */
- 
+
 #ifndef BOARD_BALLE_1420_V1_H
 #define BOARD_BALLE_1420_V1_H
 
@@ -14,7 +14,7 @@
 #define SCL_PIN				14						//I2C SCL pin
 #define SDA_PIN				15						//I2C SDA pin
 
-#define CHRG_STAT_PIN		13						//Battery charger IC status pin -- LOW means charging, 
+#define CHRG_STAT_PIN		13						//Battery charger IC status pin -- LOW means charging,
 
 #define WLED_PIN			16						//White LEDS PWM control pin
 
@@ -76,4 +76,3 @@ GND
 */
 
 #endif  //BOARD_BALLE_1420_V1_H
-

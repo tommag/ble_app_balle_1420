@@ -24,7 +24,7 @@
 static void on_write(ble_bls_t * p_bls, ble_evt_t * p_ble_evt)
 {
     ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
-    
+
 	//test if the write is directed to the white LED characteristic
     if ((p_evt_write->handle == p_bls->wled_char_handles.value_handle) &&
         (p_evt_write->len == 1) &&
@@ -49,7 +49,7 @@ void ble_bls_on_ble_evt(ble_bls_t * p_bls, ble_evt_t * p_ble_evt)
         case BLE_GATTS_EVT_WRITE:
             on_write(p_bls, p_ble_evt);
             break;
-            
+
         default:
             // No implementation needed.
             break;
@@ -71,22 +71,22 @@ static uint32_t wled_char_add(ble_bls_t * p_bls, const ble_bls_init_t * p_bls_in
     ble_gatts_char_md_t char_md;
     ble_gatts_attr_t    attr_char_value;
     ble_gatts_attr_md_t attr_md;
-    
+
     memset(&char_md, 0, sizeof(char_md));
     //readable and writable
     char_md.char_props.read   = 1;
     char_md.char_props.write  = 1;
-    char_md.p_char_user_desc  = "WLED intensity";
+    char_md.p_char_user_desc  = (uint8_t*)"WLED intensity";
     char_md.char_user_desc_max_size = 16;
     char_md.char_user_desc_size = 14;
     char_md.p_char_pf         = NULL;
     char_md.p_user_desc_md    = NULL;
 	char_md.p_cccd_md		  = NULL;
     char_md.p_sccd_md         = NULL;
-    
+
 	ble_uuid.type = p_bls->uuid_type;
 	ble_uuid.uuid = BLS_UUID_WLED_CHAR;
-	
+
     memset(&attr_md, 0, sizeof(attr_md));
 	//no security needed (open link)
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.read_perm);
@@ -95,7 +95,7 @@ static uint32_t wled_char_add(ble_bls_t * p_bls, const ble_bls_init_t * p_bls_in
     attr_md.rd_auth    = 0;
     attr_md.wr_auth    = 0;
     attr_md.vlen       = 0;
-    
+
     memset(&attr_char_value, 0, sizeof(attr_char_value));
 
     attr_char_value.p_uuid       = &ble_uuid;
@@ -104,7 +104,7 @@ static uint32_t wled_char_add(ble_bls_t * p_bls, const ble_bls_init_t * p_bls_in
     attr_char_value.init_offs    = 0;
     attr_char_value.max_len      = sizeof(uint8_t);
     attr_char_value.p_value      = 0; //Default value : OFF
-    
+
     return sd_ble_gatts_characteristic_add(p_bls->service_handle, &char_md,
                                                &attr_char_value,
                                                &p_bls->wled_char_handles);
@@ -124,22 +124,22 @@ static uint32_t irled_char_add(ble_bls_t * p_bls, const ble_bls_init_t * p_bls_i
     ble_gatts_char_md_t char_md;
     ble_gatts_attr_t    attr_char_value;
     ble_gatts_attr_md_t attr_md;
-    
+
     memset(&char_md, 0, sizeof(char_md));
     //readable and writable
     char_md.char_props.read   = 1;
     char_md.char_props.write  = 1;
-    char_md.p_char_user_desc  = "IRLED intensity";
+    char_md.p_char_user_desc  = (uint8_t*)"IRLED intensity";
     char_md.char_user_desc_max_size = 16;
     char_md.char_user_desc_size = 15;
     char_md.p_char_pf         = NULL;
     char_md.p_user_desc_md    = NULL;
 	char_md.p_cccd_md		  = NULL;
     char_md.p_sccd_md         = NULL;
-    
+
 	ble_uuid.type = p_bls->uuid_type;
 	ble_uuid.uuid = BLS_UUID_IRLED_CHAR;
-	
+
     memset(&attr_md, 0, sizeof(attr_md));
 	//no security needed (open link)
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.read_perm);
@@ -148,7 +148,7 @@ static uint32_t irled_char_add(ble_bls_t * p_bls, const ble_bls_init_t * p_bls_i
     attr_md.rd_auth    = 0;
     attr_md.wr_auth    = 0;
     attr_md.vlen       = 0;
-    
+
     memset(&attr_char_value, 0, sizeof(attr_char_value));
 
     attr_char_value.p_uuid       = &ble_uuid;
@@ -157,7 +157,7 @@ static uint32_t irled_char_add(ble_bls_t * p_bls, const ble_bls_init_t * p_bls_i
     attr_char_value.init_offs    = 0;
     attr_char_value.max_len      = sizeof(uint8_t);
     attr_char_value.p_value      = 0; //Default value : OFF
-    
+
     return sd_ble_gatts_characteristic_add(p_bls->service_handle, &char_md,
                                                &attr_char_value,
                                                &p_bls->irled_char_handles);
@@ -172,7 +172,7 @@ uint32_t ble_bls_init(ble_bls_t * p_bls, const ble_bls_init_t * p_bls_init)
     // Initialize service structure
     p_bls->wled_handler              = p_bls_init->wled_handler;
     p_bls->irled_handler             = p_bls_init->irled_handler;
-    
+
     //handle vendor-specific UUID
     ble_uuid128_t base_uuid = BLS_UUID_BASE;
 	err_code = sd_ble_uuid_vs_add(&base_uuid, &p_bls->uuid_type);
@@ -180,30 +180,29 @@ uint32_t ble_bls_init(ble_bls_t * p_bls, const ble_bls_init_t * p_bls_init)
     {
         return err_code;
     }
-		
+
 	//add service
 	ble_uuid.type = p_bls->uuid_type;
 	ble_uuid.uuid = BLS_UUID_SERVICE;
-	  
+
     err_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY, &ble_uuid, &p_bls->service_handle);
     if (err_code != NRF_SUCCESS)
     {
         return err_code;
     }
-		
+
 	//Add characteristics
 	err_code = wled_char_add(p_bls, p_bls_init);
 	if (err_code != NRF_SUCCESS)
     {
         return err_code;
     }
-    
+
 	err_code = irled_char_add(p_bls, p_bls_init);
 	if (err_code != NRF_SUCCESS)
     {
         return err_code;
     }
-    
+
     return NRF_SUCCESS;
 }
-
